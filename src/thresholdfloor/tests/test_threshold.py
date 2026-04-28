@@ -1,6 +1,6 @@
 """ThresholdFloor class tests."""
 import pytest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from thresholdfloor import ThresholdFloor, ChthonicVault

@@ -63,6 +63,210 @@ COLORS = {
 
 EARTH_RADIUS_M = 6371000.0
 
+def calculate_sunrise_azimuth(date, latitude, longitude, tz: Optional[str] = "UTC"):
+    """Return sunrise azimuth (deg, 0=N clockwise) using AetherField.
+
+    Returns None for polar day/night (no sunrise).
+    """
+    tzinfo = pytz.timezone(tz) if isinstance(tz, str) else tz
+    dt = tzinfo.localize(datetime(date.year, date.month, date.day, 12, 0, 0)) if tzinfo else datetime(
+        date.year, date.month, date.day, 12, 0, 0
+    )
+    return _sunrise_azimuth(dt, float(latitude), float(longitude), tzinfo or "UTC")
+
+def determine_solar_movement(yesterday_az, today_az):
+    
+    return _determine_solar_movement(yesterday_az, today_az)
+
+
+def is_solstice(prev_direction, current_direction):
+    """Simple direction-change heuristic for solstice detection."""
+    return prev_direction != current_direction and prev_direction != "Stationary"
+
+def current_solstice_anchors(today):
+    year = today.year
+    # Approx solstice dates (good enough for geometry)
+    summer = datetime(year, 6, 21).date()
+    winter = datetime(year, 12, 21).date()
+
+    if today <= summer:
+        # We are in: last winter -> this summer
+        winter_anchor = date(year-1, 12, 21)
+        summer_anchor = summer
+    else:
+        # We are in: this summer -> this winter
+        summer_anchor = summer
+        winter_anchor = winter
+
+    return winter_anchor, summer_anchor
+
+class CityDaemon:
+    def __init__(self, name, latitude, longitude, tz, guardian_id):
+        self.name = name
+        self.floor = ThresholdFloor(name, latitude, longitude, tz)
+        self.floor.guardian = guardian_id
+        self.phase = None
+
+    def run_sweep(self):
+        # detect local direction / phase from sun position
+        direction = detect_solar_direction(self.floor.latitude, self.floor.longitude)
+        print(direction)
+        self.floor.set_directional_phase(direction)
+        self.phase = self.floor.current_phase
+
+        # update wheel, vault, visual states
+        if self.phase == "nigredo":
+            self.floor.vault.open_gate(self.floor.guardian)
+        elif self.phase == "albedo":
+            self.floor.vault.fetch_key("Aries")
+        elif self.phase == "citrinitas":
+            self.floor.vault.deposit_seed(100)
+        elif self.phase == "rubedo":
+            self.floor.ignite_rim()
+        print(f"{self.name}: sweep complete → {self.phase}")
+
+class Gate:
+    def __init__(self, city, rung, posts, coords, tree_link, direction_policy="both", stone_required=None, ritual_note=None, cooldown_days=3):
+        self.city = city
+        self.rung = rung
+        self.posts = posts[:]  # list of post names
+        self.coords = coords
+        self.tree_link = tree_link
+        self.direction_policy = direction_policy.lower()
+        self.stone_required = stone_required
+        self.ritual_note = ritual_note
+
+        self.cooldown_days = cooldown_days
+        # state
+        self.last_opened = None
+        self.bindings = []  # list of {who, post, date, stone}
+    
+    def allows_direction(self, axis):
+        axis = axis.lower()
+        if self.direction_policy == "both":
+            return True
+        return (self.direction_policy == "west_only" and axis == "west") or \
+               (self.direction_policy == "east_only" and axis == "east")
+    
+    def is_rung_active(self, k_step):
+        # exact match; could accept tolerance rules here
+        return k_step == self.rung
+    
+    def can_open(self, k_step, axis, today):
+        if not self.is_rung_active(k_step):
+            return False
+        if not self.allows_direction(axis):
+            return False
+        if self.last_opened:
+            if (today - self.last_opened).days < self.cooldown_days:
+                return True  # still open
+        return True
+    
+    def tie_cord(self, who, post, stone, today):
+        if post not in self.posts:
+            return {"ok": False, "reason": "bad_post"}
+        if self.stone_required and stone != self.stone_required:
+            return {"ok": False, "reason": "wrong_stone"}
+        # consume stone externally then record
+        binding = {"who": who, "post": post, "date": today.isoformat(), "stone": stone}
+        self.bindings.append(binding)
+        self.last_opened = today
+        return {"ok": True, "binding": binding}
+    
+    def open_state(self, k_step, axis, today):
+        return {
+            "city": self.city,
+            "rung": self.rung,
+            "active": self.is_rung_active(k_step),
+            "direction_ok": self.allows_direction(axis),
+            "can_open": self.can_open(k_step, axis, today),
+            "last_opened": getattr(self.last_opened, "isoformat", lambda: None)()
+        }
+
+class FloorDaemon:
+    def __init__(self, name, latitude, longitude, tz, guardian_id):
+        self.name = name
+        self.floor = ThresholdFloor(name, latitude, longitude, tz)
+        self.floor.guardian = guardian_id
+        self.phase = None
+
+    def run_sweep(self):
+        # detect local direction / phase from sun position
+        direction = detect_solar_direction(self.floor.latitude, self.floor.longitude)
+        print(direction)
+        self.floor.set_directional_phase(direction)
+        self.phase = self.floor.current_phase
+
+        # update wheel, vault, visual states
+        if self.phase == "nigredo":
+            self.floor.vault.open_gate(self.floor.guardian)
+        elif self.phase == "albedo":
+            self.floor.vault.fetch_key("Aries")
+        elif self.phase == "citrinitas":
+            self.floor.vault.deposit_seed(100)
+        elif self.phase == "rubedo":
+            self.floor.ignite_rim()
+        print(f"{self.name}: sweep complete → {self.phase}")
+
+class FloorMemory:
+    def __init__(self):
+        self.records = []
+
+    def log(self, timestamp, temp, rain, wind):
+        self.records.append({
+            "time": timestamp,
+            "temp": temp,
+            "rain": rain,
+            "wind": wind
+        })
+
+class ChthonicVault:
+    def __init__(self):
+        self.keys = {}        # {sign: {"element": "gold", "found": False}}
+        self.sandals = {}     # {month: {"constellation": "Virgo", "status": "hidden"}}
+        self.seed_storage = 0 # barley, wheat, etc.
+        self.is_open = False
+        self.guardian_inside = None
+
+    def open_gate(self, guardian):
+        if not self.is_open:
+            self.is_open = True
+            self.guardian_inside = guardian
+            print(f"The gate yawns open. {guardian} descends.")
+        else:
+            print("Vault already open.")
+
+    def close_gate(self):
+        if self.is_open:
+            print(f"{self.guardian_inside.name} ascends; gate closes.")
+            self.is_open = False
+            self.guardian_inside = None
+
+    def fetch_key(self, sign):
+        key = self.keys.get(sign)
+        if key:
+            key["found"] = True
+            print(f"Fetched the {sign} equinox key.")
+            return key
+        print("No key found for that sign.")
+
+    def fetch_sandal(self, month):
+        sandal = self.sandals.get(month)
+        if sandal:
+            sandal["status"] = "worn"
+            print(f"Sandal of {month} retrieved and worn.")
+            return sandal
+
+    def deposit_seed(self, amount):
+        self.seed_storage += amount
+        print(f"Stored {amount} sheaves. Total: {self.seed_storage}.")
+
+    def withdraw_seed(self, amount):
+        if self.seed_storage >= amount:
+            self.seed_storage -= amount
+            print(f"Withdrew {amount} sheaves for planting.")
+            return amount
+        print("Not enough grain stored.")
 
 class ThresholdFloor:
     """The Threshold Floor — where sun, moon, and alchemy intersect."""
@@ -85,8 +289,8 @@ class ThresholdFloor:
         self.af = AetherField.load_calibration(calibration)
         self.pegs = self.compute_pegs()
         # Scan for horizon elevation using SRTM
-        self.elevation_m = self._fetch_srtm_elevation(self.latitude, self.longitude)
-        self.elevation_m = float(elevation_m)
+        self.horizon = {}
+        self.elevation_m = float(elevation_m) # Possibly update with horizon
         self.gate_coords: Optional[Tuple[float, float, float]] = gate_coords
         self.tree_coords: Optional[Tuple[float, float, float]] = tree_coords
         self.arch_bearing_deg: float = EAST_ARCH["azimuth"]
@@ -119,34 +323,30 @@ class ThresholdFloor:
         self.wheel_enabled = True
         self.wheel_speed = 1.0
 
+    def compute_solstice_anchors(self, year=None):
+        """
+        Return (winter_date, summer_date) anchors for the *cycle that contains today*.
+        Uses simple approximate dates (Dec 21 / Jun 21) but you can replace with more accurate solstice calcs.
+        """
+        today = _date_cls.today()
+        if year is None:
+            year = today.year
+        # choose anchors around the current year such that they bracket the current date when used appropriately
+        summer = _date_cls(year, 6, 21)
+        winter = _date_cls(year, 12, 21)
+        # if today's earlier than summer, use last winter -> this summer
+        if today <= summer:
+            return (_date_cls(year-1, 12, 21), summer)
+        else:
+            # today after summer: use this summer -> this winter
+            return (summer, winter)
+
     def sun_delay(self) -> Dict[str, Any]:
+        if not self.horizon:
+            self.horizon = scan_horizon(self.latitude, self.longitude)
         angle = get_horizon_interp(self.horizon, self.get_sunrise())
         delay = estimate_sun_delay(angle)
         return {"angle": angle, "delay": delay}
-
-    def log_weather(self):
-        w = self.weather_raw
-        temp = w["main"]["temp"]
-        feels = w["main"].get("feels_like", temp)
-        humidity = w["main"]["humidity"]
-        rain = w.get("rain", {}).get("1h", 0.0)
-        wind_speed = w["wind"]["speed"]
-        wind_deg = w["wind"].get("deg", 0)
-        pressure = w["main"]["pressure"]
-        clouds = w.get("clouds", {}).get("all", 0)
-        db_cursor(write=True).execute("""
-            INSERT INTO thresholdfloor_state (
-                node_name, latitude, longitude,
-                temperature, feels_like, humidity,
-                rain, wind_speed, wind_deg,
-                pressure, cloud_cover
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            self.name, self.latitude, self.longitude,
-            temp, feels, humidity,
-            rain, wind_speed, wind_deg,
-            pressure, clouds
-        ))
 
     def sigil(self, size: int = 512, show: bool = True):
         try:
@@ -170,15 +370,8 @@ class ThresholdFloor:
         return gdd
 
     def recent_rain(self, days: int = 3) -> float:
+        return None # TODO
         cutoff = datetime.utcnow() - timedelta(days=days)
-        with db_cursor(read_only=True) as cursor:
-            cursor.execute("""
-                SELECT rain
-                FROM thresholdfloor_state
-                WHERE node_name = ? AND timestamp >= ?
-            """, (self.name, cutoff))
-            rows = cursor.fetchall()
-        return sum(r[0] for r in rows if r[0])
 
     def ecological_state(self) -> Dict[str, Any]:
         gdd = self.compute_gdd()

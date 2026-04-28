@@ -5,6 +5,14 @@ import rasterio
 import math
 from rasterio.transform import array_bounds
 from pathlib import Path
+import os
+import requests
+from functools import lru_cache
+
+SRTM_URL = "https://pythoness.duckdns.org/v1/thresh/srtm"
+
+
+USE_LOCAL = os.getenv("SRTM_LOCAL", "0") == "1"
 
 tiles = []
 
@@ -67,11 +75,43 @@ def get_elevation_safe(lat, lon):
 
     return None
 
+@lru_cache(maxsize=10000)
 def topo(lat, lon):
+    if USE_LOCAL:
+        return topo_local(lat, lon)
+    else:
+        return topo_remote(lat, lon)
+
+def topo_local(lat, lon):
+    path = find_tile(lat, lon)
+    if not path:
+        return None
+
+    ds = load_tile(path)
+    
+    for val in ds.sample([(lon, lat)]):
+        return float(val[0])
+
+def topo_remote(lat, lon):
     try:
-        return get_elevation_safe(lat, lon)
-    except:
-        return None  # outside bounds
+        response = requests.get(
+            SRTM_URL,
+            json={"coords": f"{lat},{lon}"},
+            timeout=2
+        )
+        
+        if response.status_code != 200:
+            return None
+        
+        data = response.json()  # parses JSON into dict :contentReference[oaicite:0]{index=0}
+        
+        if not data.get("ok", True):
+            return None
+        
+        return data.get("elevation")
+    
+    except Exception:
+        return None
 
 def estimate_wind_exposure(horizon, direction):
     risk = get_horizon_interp(horizon, direction) < 2
@@ -108,7 +148,7 @@ def get_elevation_safe_old(lat, lon):
     
     return None
 
-def scan_horizon(lat, lon, radius=100, steps=72):
+def scan_horizon(lat, lon, radius=50, steps=36):
     results = {}
 
     for angle in range(0, 360, int(360/steps)):
@@ -185,6 +225,7 @@ def full_signal(node):
 
 
 def forage_signals(features, gdd):
+    # TODO
     signals = []
 
     shade = 1 - features["exposure"]

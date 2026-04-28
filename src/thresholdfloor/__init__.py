@@ -372,13 +372,8 @@ def sigil(floor, size=512, show=True):
 
 # Import the full implementations from threshold_floor.py
 try:
-    from .threshold_floor import (
-        ThresholdFloor,
-        ChthonicVault,
-        FloorDaemon,
-        CityDaemon,
-        Gate,
-    )
+    from .threshold_floor import ThresholdFloor, ChthonicVault, FloorDaemon, CityDaemon, Gate
+
 except ImportError as e:
     print(f"Warning: Could not import classes from threshold_floor: {e}")
 
@@ -423,7 +418,7 @@ except ImportError as e:
                 self.current_wind = []
                 self.current_weather = None
                 self.weather_raw = {}
-                self.fire_intensity = 0.0
+                self.fire_intensity = 0.1
                 self.lunar_phase = None
                 self.is_purified = False
                 self.last_swept = None
