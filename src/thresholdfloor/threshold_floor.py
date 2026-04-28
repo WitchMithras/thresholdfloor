@@ -238,7 +238,7 @@ class ChthonicVault:
 
     def close_gate(self):
         if self.is_open:
-            print(f"{self.guardian_inside.name} ascends; gate closes.")
+            print(f"{self.guardian_inside} ascends; gate closes.")
             self.is_open = False
             self.guardian_inside = None
 
@@ -359,15 +359,7 @@ class ThresholdFloor:
             return None
 
     def compute_gdd(self, base_temp: float = 10) -> float:
-        with db_cursor(read_only=True) as cursor:
-            cursor.execute("""
-                SELECT temperature, timestamp
-                FROM thresholdfloor_state
-                WHERE node_name = ? ORDER BY timestamp ASC
-            """, (self.name,))
-            rows = cursor.fetchall()
-        gdd = sum(max(0, r[0] - base_temp) for r in rows)
-        return gdd
+        return None # TODO
 
     def recent_rain(self, days: int = 3) -> float:
         return None # TODO
