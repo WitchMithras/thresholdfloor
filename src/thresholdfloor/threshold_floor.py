@@ -20,19 +20,16 @@ import json
 from dotenv import load_dotenv
 
 from aetherfield import AetherField
-from aether_thresher import (
+from .aether_thresher import (
     solar_declination as _solar_declination,
     sunrise_azimuth as _sunrise_azimuth,
     determine_solar_movement as _determine_solar_movement,
     solar_horizontal_at as _solar_horizontal_at,
     tf_as_above_zodiac, tf_so_below_zodiac,
 )
-from zodiac import build_wheel
-from skyfieldcomm import sign_offset
-from character import load_character_info
-from tarot import narrate_seed_reading
+#from tarot import narrate_seed_reading # Future update
 
-from elevation import *
+from .elevation import *
 
 load_dotenv()
 
@@ -87,7 +84,8 @@ class ThresholdFloor:
         self.tz = tz
         self.af = AetherField.load_calibration(calibration)
         self.pegs = self.compute_pegs()
-        self.horizon = scan_horizon(self.latitude, self.longitude)
+        # Scan for horizon elevation using SRTM
+        self.elevation_m = self._fetch_srtm_elevation(self.latitude, self.longitude)
         self.elevation_m = float(elevation_m)
         self.gate_coords: Optional[Tuple[float, float, float]] = gate_coords
         self.tree_coords: Optional[Tuple[float, float, float]] = tree_coords

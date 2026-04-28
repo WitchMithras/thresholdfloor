@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thresholdfloor"
+version = "0.0.0"
+description = "A floor for tuning to the sky"
+requires-python = ">=3.11"
+dependencies = [
+  "pytz>=2023.3",
+  "python-dateutil>=2.8.2"
+]
+readme = "README.md"
+authors = [{ name = "WitchMithras" }]
+license = { text = "Proprietary (staging)" }
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["thresholdfloor*"]
+exclude = ["tests*"]
+
