@@ -5,11 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "thresholdfloor"
 version = "0.0.0"
-description = "A floor for tuning to the sky"
+description = "A floor below for tuning to what's above"
 requires-python = ">=3.11"
 dependencies = [
   "pytz>=2023.3",
-  "python-dateutil>=2.8.2"
+  "python-dateutil>=2.8.2",
+  "aetherfield>=0.5.1"
 ]
 readme = "README.md"
 authors = [{ name = "WitchMithras" }]
