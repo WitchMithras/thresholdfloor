@@ -53,7 +53,7 @@ COLORS = {
 
 def calculate_sunrise_azimuth(date, latitude, longitude, tz: Optional[str] = "UTC"):
     """Return sunrise azimuth (deg, 0=N clockwise) using AetherField."""
-    from aether_thresher import sunrise_azimuth as _sunrise_azimuth
+    from .aether_thresher import sunrise_azimuth as _sunrise_azimuth
     tzinfo = pytz.timezone(tz) if isinstance(tz, str) else tz
     dt = tzinfo.localize(datetime(date.year, date.month, date.day, 12, 0, 0)) if tzinfo else datetime(
         date.year, date.month, date.day, 12, 0, 0
@@ -63,7 +63,7 @@ def calculate_sunrise_azimuth(date, latitude, longitude, tz: Optional[str] = "UT
 
 def determine_solar_movement(yesterday_az, today_az):
     """Return solar movement direction: 'North' or 'South'."""
-    from aether_thresher import determine_solar_movement as _determine_solar_movement
+    from .aether_thresher import determine_solar_movement as _determine_solar_movement
     return _determine_solar_movement(yesterday_az, today_az)
 
 
@@ -381,195 +381,197 @@ try:
     )
 except ImportError as e:
     print(f"Warning: Could not import classes from threshold_floor: {e}")
-    
-    # Create minimal stub classes that work for testing
-    class ThresholdFloor:
-        def __init__(self, name, latitude=0, longitude=0, tz="UTC", elevation_m=0.0):
-            # Check if a real ThresholdFloor exists
-            import sys
-            import importlib.util
+
+    try:
+        # Create minimal stub classes that work for testing
+        class ThresholdFloor:
+            def __init__(self, name, latitude=0, longitude=0, tz="UTC", elevation_m=0.0):
+                # Check if a real ThresholdFloor exists
+                import sys
+                import importlib.util
             
-            # Try to import real ThresholdFloor
-            try:
-                import thresholdfloor.threshold_floor as tf_module
-                # Try to instantiate the real class
-                real_th = tf_module.ThresholdFloor.__new__(tf_module.ThresholdFloor)
-                # For now, just create a working stub
+                # Try to import real ThresholdFloor
+                try:
+                    import thresholdfloor.threshold_floor as tf_module
+                    # Try to instantiate the real class
+                    real_th = tf_module.ThresholdFloor.__new__(tf_module.ThresholdFloor)
+                    # For now, just create a working stub
+                    self.name = name
+                    self.latitude = latitude
+                    self.longitude = longitude
+                    self.tz = tz
+                    self.elevation_m = elevation_m
+                    self.pegs = [90, 120, 150, 180, 210, 240, 270]
+                    # Initialize required attributes
+                    self.gate_coords = None
+                    self.tree_coords = None
+                    self.arch_bearing_deg = 90.0
+                    self.gate_posts = {}
+                    self.is_purified = False
+                    self.last_swept = None
+                    self.mode = "threshing"
+                    self.water_level = 0.0
+                    self.blood_level = 0.0
+                    self.wine_level = 0.0
+                    self.fruit_load = 0.0
+                    self.must_level = 0.0
+                    self.food_supply = 0.0
+                    self.vault = tf_module.ChthonicVault()
+                    self.underworld_gates = "locked"
+                    self.key_state = "seated"
+                    self.sandal_state = "hidden"
+                    self.guardian = None
+                    self.current_atmosphere = []
+                    self.current_wind = []
+                    self.current_weather = None
+                    self.weather_raw = {}
+                    self.fire_intensity = 0.0
+                    self.lunar_phase = None
+                    self.is_purified = False
+                    self.last_swept = None
+                    self.wheel_enabled = True
+                    self.wheel_speed = 1.0
+                except Exception:
+                    # Fallback stub
+                    self.name = name
+                    self.latitude = latitude
+                    self.longitude = longitude
+                    self.tz = tz
+                    self.elevation_m = elevation_m
+                    self.pegs = [90, 120, 150, 180, 210, 240, 270]
+                    self.gate_coords = None
+                    self.tree_coords = None
+                    self.arch_bearing_deg = 90.0
+                    self.gate_posts = {}
+                    self.is_purified = False
+                    self.last_swept = None
+                    self.mode = "threshing"
+                    self.water_level = 0.0
+                    self.blood_level = 0.0
+                    self.wine_level = 0.0
+                    self.fruit_load = 0.0
+                    self.must_level = 0.0
+                    self.food_supply = 0.0
+                    self.vault = None
+                    self.underworld_gates = "locked"
+                    self.key_state = "seated"
+                    self.sandal_state = "hidden"
+                    self.guardian = None
+                    self.current_atmosphere = []
+                    self.current_wind = []
+                    self.current_weather = None
+                    self.weather_raw = {}
+                    self.fire_intensity = 0.0
+                    self.lunar_phase = None
+                    self.is_purified = False
+                    self.last_swept = None
+                    self.wheel_enabled = True
+                    self.wheel_speed = 1.0
+    
+        class ChthonicVault:
+            def __init__(self):
+                self.is_open = False
+                self.keys = {}
+                self.sandals = {}
+                self.seed_storage = 0
+                self.is_open = False
+                self.guardian_inside = None
+        
+            def open_gate(self, guardian):
+                self.is_open = True
+                self.guardian_inside = guardian
+        
+            def close_gate(self):
+                self.is_open = False
+                self.guardian_inside = None
+        
+            def deposit_seed(self, amount):
+                self.seed_storage += amount
+        
+            def withdraw_seed(self, amount):
+                if self.seed_storage >= amount:
+                    self.seed_storage -= amount
+                    return amount
+                return 0
+        
+            def fetch_key(self, sign):
+                return None
+        
+            def fetch_sandal(self, month):
+                return None
+    
+        class FloorDaemon:
+            def __init__(self, name, latitude, longitude, tz, guardian_id):
                 self.name = name
-                self.latitude = latitude
-                self.longitude = longitude
-                self.tz = tz
-                self.elevation_m = elevation_m
-                self.pegs = [90, 120, 150, 180, 210, 240, 270]
-                # Initialize required attributes
-                self.gate_coords = None
-                self.tree_coords = None
-                self.arch_bearing_deg = 90.0
-                self.gate_posts = {}
-                self.is_purified = False
-                self.last_swept = None
-                self.mode = "threshing"
-                self.water_level = 0.0
-                self.blood_level = 0.0
-                self.wine_level = 0.0
-                self.fruit_load = 0.0
-                self.must_level = 0.0
-                self.food_supply = 0.0
-                self.vault = tf_module.ChthonicVault()
-                self.underworld_gates = "locked"
-                self.key_state = "seated"
-                self.sandal_state = "hidden"
-                self.guardian = None
-                self.current_atmosphere = []
-                self.current_wind = []
-                self.current_weather = None
-                self.weather_raw = {}
-                self.fire_intensity = 0.0
-                self.lunar_phase = None
-                self.is_purified = False
-                self.last_swept = None
-                self.wheel_enabled = True
-                self.wheel_speed = 1.0
-            except Exception:
-                # Fallback stub
+                self.floor = ThresholdFloor(name, latitude, longitude, tz)
+                self.floor.guardian = guardian_id
+                self.phase = None
+        
+            def run_sweep(self):
+                pass
+    
+        class CityDaemon:
+            def __init__(self, name, latitude, longitude, tz, guardian_id):
                 self.name = name
-                self.latitude = latitude
-                self.longitude = longitude
-                self.tz = tz
-                self.elevation_m = elevation_m
-                self.pegs = [90, 120, 150, 180, 210, 240, 270]
-                self.gate_coords = None
-                self.tree_coords = None
-                self.arch_bearing_deg = 90.0
-                self.gate_posts = {}
-                self.is_purified = False
-                self.last_swept = None
-                self.mode = "threshing"
-                self.water_level = 0.0
-                self.blood_level = 0.0
-                self.wine_level = 0.0
-                self.fruit_load = 0.0
-                self.must_level = 0.0
-                self.food_supply = 0.0
-                self.vault = None
-                self.underworld_gates = "locked"
-                self.key_state = "seated"
-                self.sandal_state = "hidden"
-                self.guardian = None
-                self.current_atmosphere = []
-                self.current_wind = []
-                self.current_weather = None
-                self.weather_raw = {}
-                self.fire_intensity = 0.0
-                self.lunar_phase = None
-                self.is_purified = False
-                self.last_swept = None
-                self.wheel_enabled = True
-                self.wheel_speed = 1.0
+                self.floor = ThresholdFloor(name, latitude, longitude, tz)
+                self.floor.guardian = guardian_id
+                self.phase = None
+        
+            def run_sweep(self):
+                pass
     
-    class ChthonicVault:
-        def __init__(self):
-            self.is_open = False
-            self.keys = {}
-            self.sandals = {}
-            self.seed_storage = 0
-            self.is_open = False
-            self.guardian_inside = None
+        class Gate:
+            def __init__(self, city, rung, posts, coords, tree_link, direction_policy="both", stone_required=None):
+                self.city = city
+                self.rung = rung
+                self.posts = posts if posts else []
+                self.coords = coords
+                self.tree_link = tree_link
+                self.direction_policy = direction_policy.lower()
+                self.stone_required = stone_required
         
-        def open_gate(self, guardian):
-            self.is_open = True
-            self.guardian_inside = guardian
+            def allows_direction(self, axis):
+                return True
         
-        def close_gate(self):
-            self.is_open = False
-            self.guardian_inside = None
+            def is_rung_active(self, k_step):
+                return k_step == self.rung
         
-        def deposit_seed(self, amount):
-            self.seed_storage += amount
+            def can_open(self, k_step, axis, today):
+                return True
         
-        def withdraw_seed(self, amount):
-            if self.seed_storage >= amount:
-                self.seed_storage -= amount
-                return amount
-            return 0
+            def tie_cord(self, who, post, stone, today):
+                return {"ok": False, "reason": "bad_post"}
         
-        def fetch_key(self, sign):
-            return None
-        
-        def fetch_sandal(self, month):
-            return None
+            def open_state(self, k_step, axis, today):
+                return {"city": self.city, "rung": self.rung, "active": True}
+    except Exception:
+
+        class ThresholdFloor:
+            """The Threshold Floor — where sun, moon, and alchemy intersect.
     
-    class FloorDaemon:
-        def __init__(self, name, latitude, longitude, tz, guardian_id):
-            self.name = name
-            self.floor = ThresholdFloor(name, latitude, longitude, tz)
-            self.floor.guardian = guardian_id
-            self.phase = None
-        
-        def run_sweep(self):
+            Falls back to delegate implementation if available.
+            """
             pass
-    
-    class CityDaemon:
-        def __init__(self, name, latitude, longitude, tz, guardian_id):
-            self.name = name
-            self.floor = ThresholdFloor(name, latitude, longitude, tz)
-            self.floor.guardian = guardian_id
-            self.phase = None
-        
-        def run_sweep(self):
+
+
+        class ChthonicVault:
+            """ChthonicVault — The vault beneath the earth's threshold."""
             pass
-    
-    class Gate:
-        def __init__(self, city, rung, posts, coords, tree_link, direction_policy="both", stone_required=None):
-            self.city = city
-            self.rung = rung
-            self.posts = posts if posts else []
-            self.coords = coords
-            self.tree_link = tree_link
-            self.direction_policy = direction_policy.lower()
-            self.stone_required = stone_required
-        
-        def allows_direction(self, axis):
-            return True
-        
-        def is_rung_active(self, k_step):
-            return k_step == self.rung
-        
-        def can_open(self, k_step, axis, today):
-            return True
-        
-        def tie_cord(self, who, post, stone, today):
-            return {"ok": False, "reason": "bad_post"}
-        
-        def open_state(self, k_step, axis, today):
-            return {"city": self.city, "rung": self.rung, "active": True}
-
-class ThresholdFloor:
-    """The Threshold Floor — where sun, moon, and alchemy intersect.
-    
-    Falls back to delegate implementation if available.
-    """
-    pass
 
 
-class ChthonicVault:
-    """ChthonicVault — The vault beneath the earth's threshold."""
-    pass
+        class FloorDaemon:
+            """FloorDaemon — Manages floor sweeps and alchemical phases."""
+            pass
 
 
-class FloorDaemon:
-    """FloorDaemon — Manages floor sweeps and alchemical phases."""
-    pass
+        class CityDaemon:
+            """CityDaemon — Coordinates floor dawns across a city's horizon."""
+            pass
 
 
-class CityDaemon:
-    """CityDaemon — Coordinates floor dawns across a city's horizon."""
-    pass
-
-
-class Gate:
-    """Gate — Threshold controls for passage."""
-    pass
+        class Gate:
+            """Gate — Threshold controls for passage."""
+            pass
 
 
 __all__ = [
