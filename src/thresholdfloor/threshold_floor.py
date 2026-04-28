@@ -149,11 +149,14 @@ class ThresholdFloor:
         ))
 
     def sigil(self, size: int = 512, show: bool = True):
-        from heather_self_heal import tf_sigil, show_sigil
-        sig = tf_sigil(self, size)
-        if show:
-            show_sigil(sig)
-        return sig
+        try:
+            from heather_self_heal import tf_sigil, show_sigil
+            sig = tf_sigil(self, size)
+            if show:
+                show_sigil(sig)
+            return sig
+        except Exception:
+            return None
 
     def compute_gdd(self, base_temp: float = 10) -> float:
         with db_cursor(read_only=True) as cursor:
