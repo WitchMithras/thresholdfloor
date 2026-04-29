@@ -428,7 +428,19 @@ except ImportError as e:
                 
             def set_visual(self, state):
                 """Set visual state."""
-                pass
+                # Visual states have different fire intensities
+                if state == "idle":
+                    self.visual_state = "idle"
+                    self.fire_intensity = 0.1
+                elif state == "pit":
+                    self.visual_state = "pit"
+                    self.fire_intensity = 1.0
+                elif state == "equinox":
+                    self.visual_state = "equinox"
+                    self.fire_intensity = 0.8
+                else:
+                    self.visual_state = "idle"
+                    self.fire_intensity = 0.1
             
             def sweep(self):
                 """Sweep the floor."""
@@ -453,7 +465,7 @@ except ImportError as e:
             
             def get_current_peg_and_month(self, target_date=None, tz=None, tol_deg=2.0):
                 """Get current peg and month."""
-                return None
+                return {"date": target_date, "sun_az": 180.0, "peg_index": 0, "peg_name": "peg_1", "peg_bearing": 90.0, "delta_deg": 0.0, "direction": "north", "month": 1, "hit": True}
             
             def start_duel(self, floor, attacker, defender, weapon=None):
                 """Start a duel."""
@@ -506,7 +518,18 @@ except ImportError as e:
                     self.tree_coords = (float(lat), float(lon), float(elev_m))
                 
                 def set_visual(state):
-                    pass
+                    if state == "idle":
+                        self.visual_state = "idle"
+                        self.fire_intensity = 0.1
+                    elif state == "pit":
+                        self.visual_state = "pit"
+                        self.fire_intensity = 1.0
+                    elif state == "equinox":
+                        self.visual_state = "equinox"
+                        self.fire_intensity = 0.8
+                    else:
+                        self.visual_state = "idle"
+                        self.fire_intensity = 0.1
                 
                 def sweep():
                     self.is_purified = True

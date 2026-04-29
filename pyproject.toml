@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thresholdfloor"
-version = "0.0.1"
+version = "0.0.2"
 description = "A floor below for tuning to what's above"
 requires-python = ">=3.11"
 dependencies = [
