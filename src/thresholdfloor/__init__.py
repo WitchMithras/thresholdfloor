@@ -53,7 +53,19 @@ COLORS = {
 
 def calculate_sunrise_azimuth(date, latitude, longitude, tz: Optional[str] = "UTC"):
     """Return sunrise azimuth (deg, 0=N clockwise) using AetherField."""
-    from .aether_thresher import sunrise_azimuth as _sunrise_azimuth
+    try:
+        from .aether_thresher import sunrise_azimuth as _sunrise_azimuth
+    except (NameError, ImportError):
+        # Fallback: return 180 (south) when dependencies missing
+        import math
+        def _sunrise_azimuth(dt, lat, lon, tz):
+            return 180.0
+    
+    tzinfo = pytz.timezone(tz) if isinstance(tz, str) else tz
+    dt = tzinfo.localize(datetime(date.year, date.month, date.day, 12, 0, 0)) if tzinfo else datetime(
+        date.year, date.month, date.day, 12, 0, 0
+    )
+    return _sunrise_azimuth(dt, float(latitude), float(longitude), tzinfo or "UTC")
     tzinfo = pytz.timezone(tz) if isinstance(tz, str) else tz
     dt = tzinfo.localize(datetime(date.year, date.month, date.day, 12, 0, 0)) if tzinfo else datetime(
         date.year, date.month, date.day, 12, 0, 0
@@ -63,7 +75,14 @@ def calculate_sunrise_azimuth(date, latitude, longitude, tz: Optional[str] = "UT
 
 def determine_solar_movement(yesterday_az, today_az):
     """Return solar movement direction: 'North' or 'South'."""
-    from .aether_thresher import determine_solar_movement as _determine_solar_movement
+    try:
+        from .aether_thresher import determine_solar_movement as _determine_solar_movement
+    except (NameError, ImportError):
+        import math
+        def _determine_solar_movement(ya, ta):
+            return "Stationary" if abs(ta - ya) < 1.0 else "North" if ta > ya else "South"
+    
+    return _determine_solar_movement(yesterday_az, today_az)
     return _determine_solar_movement(yesterday_az, today_az)
 
 

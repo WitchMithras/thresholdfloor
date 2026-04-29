@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: thresholdfloor
-Version: 0.0.1
+Version: 0.0.2
 Summary: A floor below for tuning to what's above
 Author: WitchMithras
 License: Proprietary (staging)
@@ -10,6 +10,7 @@ License-File: LICENSE
 Requires-Dist: pytz>=2023.3
 Requires-Dist: python-dateutil>=2.8.2
 Requires-Dist: aetherfield>=0.5.1
+Requires-Dist: rasterio>=1.4.4
 Dynamic: license-file
 
 # ThresholdFloor Migration Log
