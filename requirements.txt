@@ -2,11 +2,8 @@
 # 
 # Core dependencies required for all functionality
 # ===================================================
-numpy
-aetherfield>=0.1.0
-aether_thresher>=0.1.0
-zodiac>=0.1.0
-skyfieldcomm>=0.1.0
+aetherfield>=0.5.1
+moontime>=0.4.9
 python-dateutil>=2.8.0
 pytz>=2021.0
 numpy>=1.21.0
