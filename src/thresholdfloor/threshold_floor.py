@@ -28,7 +28,7 @@ from .aether_thresher import (
 )
 #from tarot import narrate_seed_reading # Future update
 
-from .elevation import get_horizon_interp, scan_horizon, estimate_sun_delay
+from .elevation import scan_vector, get_horizon_interp, scan_horizon, estimate_sun_delay
 from .floor_sigil import tf_sigil, show_sigil
 
 load_dotenv()
@@ -307,6 +307,7 @@ class ThresholdFloor:
         self.scarlet_cord_altitude_deg: Optional[float] = None
         self.visual_state = "idle"
         self.mode = "threshing"
+        self.current_phase = None
         self.water_level = 0.0
         self.blood_level = 0.0
         self.wine_level = 0.0
@@ -347,15 +348,108 @@ class ThresholdFloor:
             # today after summer: use this summer -> this winter
             return (summer, winter)
 
+    def get_phase(self):
+        return self.alchemy_phase()["phase"]
+
+    def alchemy_phase(self) -> Dict[str, Any]:
+        """Discern alchemical phase from prior-day sunrise movement and position.
+
+        Logic (hemisphere-aware using arches on the threshing floor):
+        - East arch = 90° azimuth for sunrise.
+        - Position relative to arch:
+            - Northern hemisphere: north-of-east if az < 90; south-of-east if az > 90.
+            - Southern hemisphere: warm side flips → south-of-east is the warm half.
+        - Heading from prior-day movement:
+            - 'Advancing' → southern heading (declination decreasing)
+            - 'Retreating' → northern heading (declination increasing)
+        - Mapping (for both hemispheres via warm-side notion):
+            - heading=north & on warm side     → Albedo
+            - heading=south & on warm side     → Rubedo
+            - heading=south & on cool side     → Citrinitas
+            - heading=north & on cool side     → Nigredo
+            - heading=stationary               → Rubedo if warm side else Nigredo
+        Returns a dict: { phase, heading, position, hemisphere, azimuth, east_arch }.
+        """
+        row = self
+        tz = row.tz or os.getenv('TZ') or 'UTC'
+        lat, _lon = row.latitude, row.longitude
+        hemisphere = 'north' if _lon >= 0.001 else 'south'
+        east_arch = EAST_ARCH["azimuth"]
+        # Seed yesterday's azimuth and direction if missing
+        today = _date_cls.today()
+        yesterday = today - timedelta(days=1)
+        last_az = None
+        last_date = None
+        last_dir = None
+        prev_az = None
+        heading = None
+        # If we have no history yet, seed yesterday's values
+        if not last_date or last_date != yesterday:
+            try:
+                prev_az = calculate_sunrise_azimuth(yesterday, self.latitude, self.longitude, tz)
+                heading = self.get_solar_direction().lower()
+            except Exception as e:
+                print(e)
+                pass
+    
+        az = prev_az
+        if not isinstance(az, (int, float)):
+            # Fallback to today's azimuth if prior snapshot is missing
+            try:
+                az = calculate_sunrise_azimuth(self.now(), self.latitude, self.longitude, tz)
+                heading = self.get_solar_direction().lower()
+
+            except Exception:
+                az = None
+        try:
+            azf = float(az) if az is not None else None
+        except Exception:
+            azf = None
+        # If azimuth is unknown, return unknown phase
+        if azf is None:
+            return {
+                'phase': 'unknown',
+                'heading': 'unknown',
+                'position': 'unknown',
+                'hemisphere': hemisphere,
+                'azimuth': None,
+                'east_arch': east_arch,
+            }
+        # Determine position relative to east arch
+        north_of_east = azf > east_arch
+        south_of_east = azf < east_arch
+        # Warm side depends on hemisphere
+        warm_side = north_of_east if hemisphere == 'north' else south_of_east
+        position_label = 'north_of_east' if north_of_east else ('south_of_east' if south_of_east else 'on_east')
+        # Map to alchemical phase
+        if heading == 'north' and warm_side:
+            phase = 'Albedo'
+        elif heading == 'south' and warm_side:
+            phase = 'Rubedo'
+        elif heading == 'south' and not warm_side:
+            phase = 'Citrinitas'
+        elif heading == 'north' and not warm_side:
+            phase = 'Nigredo'
+        else:
+            phase = 'Rubedo' if warm_side else 'Nigredo'
+        self.phase = phase
+        return {
+            'phase': phase,
+            'heading': heading,
+            'position': position_label,
+            'hemisphere': hemisphere,
+            'azimuth': azf,
+            'east_arch': east_arch,
+        }
+
     def sun_delay(self) -> Dict[str, Any]:
-        if not self.horizon:
-            self.horizon = scan_horizon(self.latitude, self.longitude)
-        angle = get_horizon_interp(self.horizon, self.get_sunrise())
+        angle = scan_vector(self.latitude, self.longitude, self.get_sunrise())
         delay = estimate_sun_delay(angle)
         return {"angle": angle, "delay": delay}
 
     def sigil(self, size: int = 512, show: bool = True):
         try:
+            self.get_phase()
             sig = tf_sigil(self, size)
             if show:
                 show_sigil(sig)

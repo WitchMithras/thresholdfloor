@@ -148,7 +148,33 @@ def get_elevation_safe_old(lat, lon):
     
     return None
 
-def scan_horizon(lat, lon, radius=50, steps=36):
+def scan_vector(lat, lon, azimuth, radius=500, step=20):
+    base_elev = topo(lat, lon)
+    
+    if base_elev is None:
+        return None
+    
+    max_angle = -999
+    
+    for dist in range(step, radius, step):
+        sample_lat = lat + (dist * math.cos(math.radians(azimuth))) / 111320
+        sample_lon = lon + (dist * math.sin(math.radians(azimuth))) / (
+            111320 * math.cos(math.radians(lat))
+        )
+        
+        elev = topo(sample_lat, sample_lon)
+        if elev is None:
+            continue
+        
+        delta_elev = elev - base_elev
+        elev_angle = math.degrees(math.atan2(delta_elev, dist))
+        
+        if elev_angle > max_angle:
+            max_angle = elev_angle
+    
+    return max_angle
+
+def scan_horizon(lat, lon, radius=500, steps=36):
     results = {}
 
     for angle in range(0, 360, int(360/steps)):

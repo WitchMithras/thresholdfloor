@@ -71,7 +71,18 @@ def julian_day(dt):
 
     return JD
 
-import math
+def get_zodiac_phase(longitude: float, dt: datetime):
+    #dt = _as_datetime(dt)
+    year = dt.year
+
+    raw_index = longitude / 30.0
+    i = int(raw_index) % 12
+    frac = raw_index % 1.0  # 👈 THIS is the smooth part
+
+    return {
+        "index": i,
+        "phase": frac  # 0.0 → 1.0 within the sign
+    }
 
 def tf_as_above_zodiac(dt, coords):
     lat, lon = coords
@@ -90,14 +101,17 @@ def tf_as_above_zodiac(dt, coords):
     signs = []
     seen = set()
 
+
     for i in range(6):
         lon_i = (start - i * 30) % 360
         sign = get_zodiac_by_longitude_dt(lon_i, dt)
+        phase_data = get_zodiac_phase(lon_i, dt)
 
         if sign not in seen:
             signs.append({
                 "sign": sign,
-                "center_lon": lon_i
+                "center_lon": lon_i,
+                "phase": phase_data["phase"]
             })
             seen.add(sign)
 
@@ -120,11 +134,14 @@ def tf_so_below_zodiac(dt, coords):
     for i in range(6):
         lon_i = (start - i * 30) % 360
         sign = get_zodiac_by_longitude_dt(lon_i, dt)
+        phase_data = get_zodiac_phase(lon_i, dt)
 
         if sign not in seen:
             signs.append({
                 "sign": sign,
-                "center_lon": lon_i
+                "center_lon": lon_i,
+                "phase": phase_data["phase"]
+
             })
             seen.add(sign)
 
@@ -300,12 +317,12 @@ def sunrise_azimuth_for_declination(
 
 def determine_solar_movement(yesterday_az: float, today_az: float) -> str:
     """Return 'North', 'South', or 'Stationary' by comparing sunrise azimuths."""
-    if today_az > yesterday_az:
+    delta = (today_az - yesterday_az + 180) % 360 - 180
+    if delta > 0:
         return "North"
-    if today_az < yesterday_az:
+    elif delta < 0:
         return "South"
     return "Stationary"
-
 
 # ---------------- Rise/set + temporal (general bodies) ----------------
 

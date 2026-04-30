@@ -44,7 +44,6 @@ TREE_SPRITE_MAP = {
     'Alder': "shrub",
     'Willow': "tree_dark",
     'Yew': "tree_dark",
-    'Apple': "shrub",
     'Spruce': "tree_dark_skinny",
     'Pine': "tree_pale_skinny",
     'Elder': "shrub",
@@ -149,7 +148,6 @@ sprite_lookup = {
     for rune, tree_type in TREE_LOOKUP.items()
 }
 
-
 def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
     from PIL import Image, ImageEnhance, ImageFilter, ImageOps
     import math
@@ -193,17 +191,20 @@ def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
     alt = max(altitude, 2)
     alt_rad = math.radians(alt)
 
-      # flatten vertically
-    if alt < 60:
-        new_w = int(size * 0.375)
-    elif alt < 45:
-        new_w = int(size * 0.25)
-    elif alt < 30:
-        new_w = int(size * 0.175)
-    elif alt < 20:
-        new_w = int(size * 0.09)
-    else:
-        new_w = int(size * 0.50)
+    # angle difference from the "broadside" shadow direction (180° in your case)
+    delta = abs((azimuth - 180 + 180) % 360 - 180)
+
+    # cosine falloff (0° = full width, 90° = very thin)
+    falloff = abs(math.cos(math.radians(delta)))
+
+    # soften it so it doesn’t collapse too fast
+    falloff = falloff ** 1.5   # tweak 1.2–2.5
+
+    # clamp to your minimum thickness
+    min_scale = 0.09
+    scale = min_scale + (1 - min_scale) * falloff
+
+    new_w = int(size * scale)
       # 🌿 Stretch length based on altitude (LOW sun = LONG shadow)
     stretch = min(6.0, 1 / math.tan(alt_rad))
 
@@ -341,7 +342,10 @@ def tf_sigil(floor, size=400):
         lon = entry["center_lon"]
         sign = entry["sign"]
 
-        theta = math.radians(lon - 103)
+
+        phase_offset = entry.get("phase", 0.0)
+        theta = math.radians(lon + phase_offset * 30 - 90)
+        #theta = math.radians(lon - 103)
 
         x = cx + r * -math.sin(theta)
         y = cy - r *  math.cos(theta)
@@ -400,35 +404,48 @@ def tf_sigil(floor, size=400):
 
         img.paste(glyph_img, (int(px), int(py)), glyph_img)
     # 🌳 Tree (axis)
-    rune = 'ᚨ'
-    size = 64
-    overlay_tree_sprite(
-        img,
-        rune,
-        position=(cx - 32, cy - size),
-        size=size
-    )
+    try:
+        if not floor.current_phase:
+            phase = floor.get_phase()
+        else:
+            phase = floor.current_phase
+        if not phase == "Nigredo":
+            if phase == "Albedo":
+                rune, dark_rune = 'ᛁ', 'ᛁ'
+            elif phase == "Citrinitas":
+                rune, dark_rune = 'ᚢ', 'ᚢ'
+            elif phase == "Rubedo":
+                rune, dark_rune = 'ᚨ', 'ᛇ'
+            #rune, dark_rune = 'ᚨ', 'ᛇ'
 
-    # 🌞 Shadow using floor.observe()
-    dark_rune = 'ᛇ'
-    beam = floor.observe()
-    sun = beam.get("sun")
-
-    if sun:
-        alt = sun["alt_apparent"]
-        az  = sun["azimuth"]
-
-        if alt > floor.sun_delay().get("angle") and 90 < az < 270: # Over the horizon and projecting downwards
-            overlay_shadow_tree(
+            size = 64
+            overlay_tree_sprite(
                 img,
-                rune='ᛇ',
-                cx=cx,
-                cy=cy,
-                azimuth=az,
-                altitude=alt,
-                size=64
+                rune,
+                position=(cx - (size / 2), cy - size),
+                size=size
             )
 
+            # 🌞 Shadow using floor.observe()
+            beam = floor.observe()
+            sun = beam.get("sun")
+
+            if sun:
+                alt = sun["alt_apparent"]
+                az  = sun["azimuth"]
+
+                if alt > floor.sun_delay().get("angle") and 90 < az < 270: # Over the horizon and projecting downwards
+                    overlay_shadow_tree(
+                        img,
+                        rune=dark_rune,
+                        cx=cx,
+                        cy=cy,
+                        azimuth=az,
+                        altitude=alt,
+                        size=64
+                    )
+    except Exception as e:
+        pass
     # Outer ring
     #draw.ellipse(
     #    (cx - r, cy - r, cx + r, cy + r),

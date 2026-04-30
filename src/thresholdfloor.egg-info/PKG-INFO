@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: thresholdfloor
-Version: 0.1.2
+Version: 0.1.5
 Summary: A floor below for tuning to what's above
 Author: WitchMithras
 License: Proprietary (staging)
@@ -16,6 +16,7 @@ Requires-Dist: numpy>=1.21.0
 Requires-Dist: Pillow>=9.0.0
 Requires-Dist: cryptography>=40.0.0
 Requires-Dist: scipy>=1.9.0
+Requires-Dist: dotenv>=0.19.0
 Dynamic: license-file
 
 # ThresholdFloor Migration Log
