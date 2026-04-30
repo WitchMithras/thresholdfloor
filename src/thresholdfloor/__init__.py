@@ -13,8 +13,8 @@ Dependencies:
 - skyfieldcomm: Sign offsets and celestial markers
 """
 
-__version__ = "0.0.0"
-__author__ = "Heather Nightfall"
+__version__ = "0.1.2"
+__author__ = "WitchMithras"
 
 from typing import Optional, Tuple, List, Dict, Any
 from datetime import datetime, date, timezone, timedelta
@@ -241,7 +241,7 @@ def _deg2rad(d):
 
 
 def _rad2deg(r):
-    return r * 180.0 / 3.141592653589793
+    return r * 180.0 / 3.14159265358979323846264338327950
 
 
 def _bearing_deg(lat1, lon1, lat2, lon2):

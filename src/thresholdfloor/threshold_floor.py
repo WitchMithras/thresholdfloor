@@ -5,7 +5,6 @@ for solar geometry, alchemical phases, vault state, and ritual automation.
 
 See also:
 - __init__.py for public functions and utilities
-- BUILD_LOG.md for migration progress
 """
 
 from __future__ import annotations
@@ -29,11 +28,18 @@ from .aether_thresher import (
 )
 #from tarot import narrate_seed_reading # Future update
 
-from .elevation import *
+from .elevation import get_horizon_interp, scan_horizon, estimate_sun_delay
+from .floor_sigil import tf_sigil, show_sigil
 
 load_dotenv()
 
-api_key = os.getenv("weather_api_key")
+WEATHER_EXISTS = False
+
+try:
+    api_key = os.getenv("weather_api_key")
+    WEATHER_EXISTS = True
+except Exception:
+    pass
 
 # Arch definitions
 EAST_ARCH = {"azimuth": 90.0, "inscription": "The Sign of the Times"}
@@ -350,7 +356,6 @@ class ThresholdFloor:
 
     def sigil(self, size: int = 512, show: bool = True):
         try:
-            from heather_self_heal import tf_sigil, show_sigil
             sig = tf_sigil(self, size)
             if show:
                 show_sigil(sig)
@@ -412,17 +417,23 @@ class ThresholdFloor:
         return datetime.now(tzinfo)
 
     def weather(self) -> str:
+        if not WEATHER_EXISTS:
+            return None
         self.weather_raw = get_weather(self.latitude, self.longitude, api_key)
         self.current_weather = self.weather_raw.get("weather", [{}])[0].get("description", "").lower()
         return self.current_weather
 
     def atmosphere(self) -> Dict[str, Any]:
+        if not WEATHER_EXISTS:
+            return None
         if not self.weather_raw:
             self.weather()
         self.current_atmosphere = get_local_atmosphere_data(self.weather_raw)
         return self.current_atmosphere
 
     def wind(self) -> Dict[str, Any]:
+        if not WEATHER_EXISTS:
+            return None
         if not self.weather_raw:
             self.weather()
         self.current_wind = get_wind_data(self.weather_raw)
@@ -533,35 +544,6 @@ class ThresholdFloor:
                 direction_val = "south"
         k_step = self.step_peg(raw, direction_val)
         return k_step, direction_val, az, raw
-
-    def daily_tick(self, today: datetime, user_id: str = "global", knights: List[Dict] = None, caravans: List[Tuple] = None):
-        from crimson_thread import orchard_daily_growth
-        orchard_daily_growth(self.name, user_id, rung=self.current_k_and_direction(today)[0])
-        k_step, direction, az, raw = self.current_k_and_direction(today)
-        arch_dir = "panel_archives"
-        os.makedirs(arch_dir, exist_ok=True)
-        path = os.path.join(arch_dir, f"archive_{user_id}__{self.name}.json")
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                panel = json.load(f)
-        else:
-            panel = {"echo": {}, "site_meta": {"incense": [], "storax_stock": 0, "frankincense_stock": 0, "site_name": self.name}}
-        meta = panel.setdefault("site_meta", {})
-        meta["current_k_step"] = k_step
-        meta["direction"] = direction
-        meta["azimuth"] = az
-        meta["raw_peg"] = raw
-        if knights:
-            for kn in knights:
-                if kn.get("site") == self.name:
-                    units = kn.get("burn_per_day", 3)
-                    stock = meta.get("storax_stock", 0)
-                    consumed = min(stock, units)
-                    meta["storax_stock"] = stock - consumed
-                    meta.setdefault("recent_burns", []).append({"when": today.isoformat(), "by": kn.get("name"), "units": consumed})
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(panel, f, indent=2)
-        return {"site": self.name, "k_step": k_step, "direction": direction, "azimuth": az, "raw_peg": raw}
 
     # Site / geometry configuration
     def configure_gatehouse(self, lat: float, lon: float, elev_m: float, bearing_deg: Optional[float] = None):

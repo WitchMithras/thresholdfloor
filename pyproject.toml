@@ -4,14 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thresholdfloor"
-version = "0.0.2"
+version = "0.1.2"
 description = "A floor below for tuning to what's above"
 requires-python = ">=3.11"
 dependencies = [
-  "pytz>=2023.3",
-  "python-dateutil>=2.8.2",
   "aetherfield>=0.5.1",
-  "rasterio>=1.4.4"
+  "moontime>=0.4.9",
+  "rasterio>=1.4.4",
+  "python-dateutil>=2.8.0",
+  "pytz>=2021.0",
+  "numpy>=1.21.0",
+  "Pillow>=9.0.0",
+  "cryptography>=40.0.0",
+  "scipy>=1.9.0"
 ]
 readme = "README.md"
 authors = [{ name = "WitchMithras" }]
@@ -23,5 +28,8 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["thresholdfloor*"]
-exclude = ["tests*"]
+exclude = ["thresholdfloor/tests*"]
+
+[tool.setuptools.package-data]
+thresholdfloor = ["*.pkl"]
 
