@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: thresholdfloor
-Version: 0.1.6
+Version: 0.1.8
 Summary: A floor below for tuning to what's above
 Author: WitchMithras
 License: Proprietary (staging)
@@ -109,7 +109,7 @@ def test_one():
     )
 
     print(bfloor.as_above())  # Zodiac above horizon
-    print(bfloor.as_below())  # Zodiac below horizon
+    print(bfloor.so_below())  # Zodiac below horizon
 
     tofloor = tf(
         "meow meow tokyo",

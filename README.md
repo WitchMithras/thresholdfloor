@@ -88,7 +88,7 @@ def test_one():
     )
 
     print(bfloor.as_above())  # Zodiac above horizon
-    print(bfloor.as_below())  # Zodiac below horizon
+    print(bfloor.so_below())  # Zodiac below horizon
 
     tofloor = tf(
         "meow meow tokyo",
