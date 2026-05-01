@@ -28,7 +28,7 @@ from .aether_thresher import (
 )
 #from tarot import narrate_seed_reading # Future update
 
-from .elevation import scan_vector, get_horizon_interp, scan_horizon, estimate_sun_delay
+from .elevation import topo, scan_vector, get_horizon_interp, scan_horizon, estimate_sun_delay
 from .floor_sigil import tf_sigil, show_sigil
 
 load_dotenv()
@@ -68,6 +68,43 @@ COLORS = {
 }
 
 EARTH_RADIUS_M = 6371000.0
+
+def _deg2rad(d: float) -> float:
+    return d * math.pi / 180.0
+
+
+def _rad2deg(r: float) -> float:
+    return r * 180.0 / math.pi
+
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in meters."""
+    φ1, φ2 = _deg2rad(lat1), _deg2rad(lat2)
+    Δφ = φ2 - φ1
+    Δλ = _deg2rad(lon2 - lon1)
+
+    a = math.sin(Δφ / 2.0) ** 2 + math.cos(φ1) * math.cos(φ2) * math.sin(Δλ / 2.0) ** 2
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    return EARTH_RADIUS_M * c
+
+
+def _vertical_angle_deg(d_horizontal_m: float, dz_m: float) -> float:
+    """Elevation angle (deg) from observer to target."""
+    if d_horizontal_m <= 0.0:
+        return 90.0 if dz_m > 0 else -90.0 if dz_m < 0 else 0.0
+    return _rad2deg(math.atan2(dz_m, d_horizontal_m))
+
+
+def _bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Initial bearing from (lat1,lon1) to (lat2,lon2); 0°=N, clockwise."""
+    φ1, φ2 = _deg2rad(lat1), _deg2rad(lat2)
+    Δλ = _deg2rad(lon2 - lon1)
+
+    x = math.sin(Δλ) * math.cos(φ2)
+    y = math.cos(φ1) * math.sin(φ2) - math.sin(φ1) * math.cos(φ2) * math.cos(Δλ)
+
+    θ = math.atan2(x, y)  # NOTE: swapped to align 0°=N convention
+    bearing = (_rad2deg(θ) + 360.0) % 360.0
+    return bearing
 
 def calculate_sunrise_azimuth(date, latitude, longitude, tz: Optional[str] = "UTC"):
     """Return sunrise azimuth (deg, 0=N clockwise) using AetherField.
@@ -296,7 +333,7 @@ class ThresholdFloor:
         self.pegs = self.compute_pegs()
         # Scan for horizon elevation using SRTM
         self.horizon = {}
-        self.elevation_m = float(elevation_m) # Possibly update with horizon
+        self.elevation_m = float(elevation_m) if elevation_m else topo(latitude, longitude)
         self.gate_coords: Optional[Tuple[float, float, float]] = gate_coords
         self.tree_coords: Optional[Tuple[float, float, float]] = tree_coords
         self.arch_bearing_deg: float = EAST_ARCH["azimuth"]
@@ -355,9 +392,9 @@ class ThresholdFloor:
         """Discern alchemical phase from prior-day sunrise movement and position.
 
         Logic (hemisphere-aware using arches on the threshing floor):
-        - East arch = 90° azimuth for sunrise.
+        - East arch = ~90° azimuth for sunrise.
         - Position relative to arch:
-            - Northern hemisphere: north-of-east if az < 90; south-of-east if az > 90.
+            - Northern hemisphere: north-of-east if az > 90; south-of-east if az < 90.
             - Southern hemisphere: warm side flips → south-of-east is the warm half.
         - Heading from prior-day movement:
             - 'Advancing' → southern heading (declination decreasing)
@@ -423,15 +460,15 @@ class ThresholdFloor:
         position_label = 'north_of_east' if north_of_east else ('south_of_east' if south_of_east else 'on_east')
         # Map to alchemical phase
         if heading == 'north' and warm_side:
-            phase = 'Albedo'
+            phase = 'Albedo' if hemisphere == 'north' else 'Rubedo'
         elif heading == 'south' and warm_side:
-            phase = 'Rubedo'
+            phase = 'Rubedo' if hemisphere == 'north' else 'Albedo'
         elif heading == 'south' and not warm_side:
-            phase = 'Citrinitas'
+            phase = 'Citrinitas' if hemisphere == 'north' else 'Nigredo'
         elif heading == 'north' and not warm_side:
-            phase = 'Nigredo'
+            phase = 'Nigredo' if hemisphere == 'north' else 'Citrinitas'
         else:
-            phase = 'Rubedo' if warm_side else 'Nigredo'
+            phase = 'Rubedo' if warm_side else 'Nigredo' if hemisphere == 'north' else 'Nigredo' if warm_side else 'Rubedo'
         self.phase = phase
         return {
             'phase': phase,
@@ -864,7 +901,6 @@ class ThresholdFloor:
         direction = self.get_solar_direction(target_date, tz)
         month_num = self._month_from_peg_and_direction(best_index, direction)
         hit = best_delta <= tol_deg
-        print(f"{self.name} {target_date}: sunrise {sun_az:.2f}°, nearest peg #{best_index} ({best_name}) at {best_bearing:.2f}° (Δ={best_delta:.2f}°), direction={direction}, month={month_num}, hit={hit}")
         return {"date": target_date, "sun_az": sun_az, "peg_index": best_index, "peg_name": best_name, "peg_bearing": best_bearing, "delta_deg": best_delta, "direction": direction, "month": month_num, "hit": hit}
 
     @staticmethod

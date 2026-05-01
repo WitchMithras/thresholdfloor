@@ -413,12 +413,13 @@ def tf_sigil(floor, size=400):
             if phase == "Albedo":
                 rune, dark_rune = 'ᛁ', 'ᛁ'
             elif phase == "Citrinitas":
-                rune, dark_rune = 'ᚢ', 'ᚢ'
+                rune, dark_rune = 'ᚲ', 'ᛞ'
             elif phase == "Rubedo":
                 rune, dark_rune = 'ᚨ', 'ᛇ'
-            #rune, dark_rune = 'ᚨ', 'ᛇ'
+            rune, dark_rune = 'ᚨ', 'ᛇ'
+            #rune, dark_rune = 'ᚲ', 'ᛞ'
 
-            size = 64
+            size = 82
             overlay_tree_sprite(
                 img,
                 rune,
@@ -433,8 +434,9 @@ def tf_sigil(floor, size=400):
             if sun:
                 alt = sun["alt_apparent"]
                 az  = sun["azimuth"]
-
-                if alt > floor.sun_delay().get("angle") and 90 < az < 270: # Over the horizon and projecting downwards
+                if alt > 0 and 90 < az < 270: # Over the horizon and projecting downwards
+                ## TOO HEAVY
+                #if alt > floor.sun_delay().get("angle") and 90 < az < 270: # Over the horizon and projecting downwards 
                     overlay_shadow_tree(
                         img,
                         rune=dark_rune,
@@ -442,7 +444,7 @@ def tf_sigil(floor, size=400):
                         cy=cy,
                         azimuth=az,
                         altitude=alt,
-                        size=64
+                        size=size
                     )
     except Exception as e:
         pass
