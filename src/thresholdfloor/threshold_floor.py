@@ -30,6 +30,7 @@ from .aether_thresher import (
 
 from .elevation import topo, scan_vector, get_horizon_interp, scan_horizon, estimate_sun_delay
 from .floor_sigil import tf_sigil, show_sigil
+from moontime import MoonTime
 
 load_dotenv()
 
@@ -546,6 +547,10 @@ class ThresholdFloor:
     def now(self) -> datetime:
         tzinfo = pytz.timezone(self.tz)
         return datetime.now(tzinfo)
+
+    def now_mt(self) -> datetime:
+        MoonTime.from_dt(self.now())
+        return MoonTime.from_dt(self.now())
 
     def weather(self) -> str:
         if not WEATHER_EXISTS:

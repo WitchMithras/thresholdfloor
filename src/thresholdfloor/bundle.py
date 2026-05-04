@@ -7,6 +7,22 @@ import importlib.resources as res
 ASSET_BYTES = {}
 _LOADED = False
 
+def _save_image_bundle_and_or_disk(img: Image.Image, out_path: Optional[str] = None, bundle_key: Optional[str] = None, fmt: str = "PNG") -> str:
+    """
+    If both out_path and bundle_key are given, writes both.
+    Returns a string key/path preferring bundle_key if provided, else out_path.
+    """
+    if out_path:
+        out_dir = os.path.dirname(out_path)
+        if out_dir and not os.path.exists(out_dir):
+            os.makedirs(out_dir, exist_ok=True)
+        img.save(out_path, format=fmt)
+
+    if bundle_key:
+        bundle_put_image(bundle_key, img, fmt=fmt)
+
+    return bundle_key or (out_path or "")
+
 def _bundle_load():
     global ASSET_BYTES, _LOADED
     if _LOADED:

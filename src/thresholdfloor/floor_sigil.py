@@ -4,7 +4,7 @@ import random
 import io, os, tempfile
 from math import radians
 from moontime import moonstamp, MoonTime
-from .bundle import _bundle_key_with_ext, _maybe_write_temp_png, bundle_put_bytes, _bundle_load, ASSET_BYTES, bundle_put_image, _resolve_asset_to_pil
+from .bundle import _save_image_bundle_and_or_disk, _bundle_key_with_ext, _maybe_write_temp_png, bundle_put_bytes, _bundle_load, ASSET_BYTES, bundle_put_image, _resolve_asset_to_pil
 
 TK_EXISTS = False
 PIL_EXISTS = False
