@@ -28,9 +28,22 @@ from .aether_thresher import (
 )
 #from tarot import narrate_seed_reading # Future update
 
-from .elevation import topo, scan_vector, get_horizon_interp, scan_horizon, estimate_sun_delay
+from .elevation import (
+    topo, scan_vector, 
+    get_horizon_interp, scan_horizon, 
+    estimate_sun_delay
+)
 from .floor_sigil import tf_sigil, show_sigil
 from moontime import MoonTime
+from .shadow_calibration import (
+    ShadowMark,
+    EastWestCalibration,
+    calibrate_east_west,
+)
+from .shadow_simulation import (
+    Gnomon, 
+    project_shadow_tip
+)
 
 load_dotenv()
 
@@ -69,6 +82,9 @@ COLORS = {
 }
 
 EARTH_RADIUS_M = 6371000.0
+
+
+
 
 def _deg2rad(d: float) -> float:
     return d * math.pi / 180.0
@@ -367,6 +383,175 @@ class ThresholdFloor:
         self.last_swept = None
         self.wheel_enabled = True
         self.wheel_speed = 1.0
+        self.shadow_marks = []
+        self.east_west_calibration = None
+        self.gnomon_height = 1.0
+        self.gnomon = Gnomon(
+            base_x=getattr(self, "latitude", 0.0),
+            base_y=getattr(self, "longitude", 0.0),
+            height=getattr(self, "gnomon_height", 1.0),
+        )
+        self.shadow_calibration_spacing_minutes = 100
+
+    def add_three_shadow_marks_from_now(
+        self,
+        spacing_minutes: int = None,
+    ):
+        """
+        Simulate three shadow marks:
+          now
+          now + spacing
+          now + 2*spacing
+
+        Then add them to self.shadow_marks.
+        """
+        if not spacing_minutes:
+            spacing_minutes = self.shadow_calibration_spacing_minutes
+        start = self.now()
+
+        added = []
+
+        for i in range(3):
+            timestamp = start + timedelta(minutes=spacing_minutes * i)
+
+            shadow = self.add_shadow_mark_from_simulation(
+                timestamp=timestamp,
+            )
+
+            if shadow is not None:
+                added.append(shadow)
+
+        return added
+
+    def _timestamp_string(self, timestamp=None) -> str:
+        """
+        Normalize timestamps so marks sort cleanly.
+        """
+        if timestamp is None:
+            timestamp = self.now()
+
+        if hasattr(timestamp, "isoformat"):
+            return timestamp.isoformat()
+
+        return str(timestamp)
+
+
+    def simulate_shadow(
+        self,
+        timestamp: str | None = None,
+    ):
+        """
+        Simulate one shadow from the floor's current gnomon.
+        """
+        if timestamp is None:
+            timestamp = self.now()
+
+        beam = self.observe(timestamp)
+        sun = beam.get("sun") if beam else None
+
+        if not sun:
+            return None
+
+        sun_altitude_deg = sun.get("alt_apparent")
+        sun_azimuth_deg = sun.get("azimuth")
+
+        if sun_altitude_deg is None or sun_azimuth_deg is None:
+            return None
+
+        sun_altitude_deg = float(sun_altitude_deg)
+        sun_azimuth_deg = float(sun_azimuth_deg)
+
+        if sun_altitude_deg <= 0:
+            return None
+
+        timestamp = self._timestamp_string(timestamp)
+
+        return project_shadow_tip(
+            self.gnomon,
+            sun_azimuth_deg=sun_azimuth_deg,
+            sun_altitude_deg=sun_altitude_deg,
+            timestamp=timestamp,
+            max_length=getattr(self, "max_shadow_length", None),
+        )
+
+
+    def add_shadow_mark_from_simulation(
+        self,
+        timestamp: str | None = None,
+    ):
+        """
+        Simulate a shadow, measure its tip, and add it as a calibration mark.
+        """
+
+        if timestamp is None:
+            timestamp = self.now()
+
+        shadow = self.simulate_shadow(
+            timestamp=timestamp,
+        )
+
+        if shadow is None:
+            return None
+
+        mark = ShadowMark(
+            x=shadow.tip_x,
+            y=shadow.tip_y,
+            timestamp=shadow.timestamp,
+        )
+
+        self.shadow_marks.append(mark)
+
+        return shadow
+
+
+    def add_shadow_mark(self, x: float, y: float, timestamp: str | None = None):
+        """
+        Add one observed shadow-tip mark.
+        Call this when the user clicks/taps/records the shadow tip.
+        """
+
+        timestamp = self._timestamp_string(timestamp)
+
+        self.shadow_marks.append(
+            ShadowMark(
+                x=float(x),
+                y=float(y),
+                timestamp=timestamp,
+            )
+        )
+
+
+    def tune_east_arch_from_shadows(
+        self,
+        min_angle_update_deg: float = 0.5,
+        max_rms_error: float | None = None,
+    ) -> bool:
+        """
+        Fit the east/west line from collected shadow marks.
+
+        Returns True if the east arch was updated.
+        """
+
+        if len(self.shadow_marks) < 3:
+            return False
+
+        calibration, should_publish = calibrate_east_west(
+            self.shadow_marks,
+            previous=self.east_west_calibration,
+            min_angle_update_deg=min_angle_update_deg,
+            max_rms_error=max_rms_error,
+        )
+
+        if should_publish:
+            self.east_west_calibration = calibration
+
+            # This is the important ritual hinge:
+            # the floor's arch bearing is now physically calibrated east.
+            self.arch_bearing_deg = calibration.east_azimuth_deg
+
+            return True
+
+        return False
 
     def compute_solstice_anchors(self, year=None):
         """
@@ -412,7 +597,7 @@ class ThresholdFloor:
         tz = row.tz or os.getenv('TZ') or 'UTC'
         lat, _lon = row.latitude, row.longitude
         hemisphere = 'north' if _lon >= 0.001 else 'south'
-        east_arch = EAST_ARCH["azimuth"]
+        east_arch = getattr(self, "arch_bearing_deg", 90.0)
         # Seed yesterday's azimuth and direction if missing
         today = _date_cls.today()
         yesterday = today - timedelta(days=1)

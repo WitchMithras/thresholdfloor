@@ -178,6 +178,10 @@ A shadow-based phase derived from solar geometry.
 
 ### Sigil
 
+<p align="center">
+  <img src="https://pythoness.duckdns.org/static/images/sigil.png" width="400"/>
+</p>
+
 ```python
 tfloor.sigil()
 ```

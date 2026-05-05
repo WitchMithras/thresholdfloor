@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thresholdfloor"
-version = "0.1.8"
+version = "0.2.9"
 description = "A floor below for tuning to what's above"
 requires-python = ">=3.11"
 dependencies = [
@@ -17,7 +17,7 @@ dependencies = [
   "Pillow>=9.0.0",
   "cryptography>=40.0.0",
   "scipy>=1.9.0",
-  "dotenv>=0.19.0"
+  "python-dotenv>=0.19.0"
 ]
 readme = "README.md"
 authors = [{ name = "WitchMithras" }]

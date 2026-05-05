@@ -13,7 +13,7 @@ Dependencies:
 - skyfieldcomm: Sign offsets and celestial markers
 """
 
-__version__ = "0.1.8"
+__version__ = "0.2.1"
 __author__ = "WitchMithras"
 
 from typing import Optional, Tuple, List, Dict, Any
