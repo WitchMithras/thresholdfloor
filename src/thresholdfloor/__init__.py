@@ -19,8 +19,15 @@ __author__ = "WitchMithras"
 from typing import Optional, Tuple, List, Dict, Any
 from datetime import datetime, date, timezone, timedelta
 import os
-import pytz
-from dotenv import load_dotenv
+try:
+    import pytz
+except ImportError:  # optional dependency fallback for lightweight environments
+    pytz = None
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        return False
 
 # Load environment variables
 load_dotenv()
@@ -61,17 +68,19 @@ def calculate_sunrise_azimuth(date, latitude, longitude, tz: Optional[str] = "UT
         def _sunrise_azimuth(dt, lat, lon, tz):
             return 180.0
     
-    tzinfo = pytz.timezone(tz) if isinstance(tz, str) else tz
-    dt = tzinfo.localize(datetime(date.year, date.month, date.day, 12, 0, 0)) if tzinfo else datetime(
-        date.year, date.month, date.day, 12, 0, 0
-    )
-    return _sunrise_azimuth(dt, float(latitude), float(longitude), tzinfo or "UTC")
-    tzinfo = pytz.timezone(tz) if isinstance(tz, str) else tz
-    dt = tzinfo.localize(datetime(date.year, date.month, date.day, 12, 0, 0)) if tzinfo else datetime(
-        date.year, date.month, date.day, 12, 0, 0
-    )
-    return _sunrise_azimuth(dt, float(latitude), float(longitude), tzinfo or "UTC")
+    if isinstance(tz, str):
+        if pytz is not None:
+            tzinfo = pytz.timezone(tz)
+            dt = tzinfo.localize(datetime(date.year, date.month, date.day, 12, 0, 0))
+        else:
+            from zoneinfo import ZoneInfo
+            tzinfo = ZoneInfo(tz)
+            dt = datetime(date.year, date.month, date.day, 12, 0, 0, tzinfo=tzinfo)
+    else:
+        tzinfo = tz
+        dt = datetime(date.year, date.month, date.day, 12, 0, 0, tzinfo=tzinfo)
 
+    return _sunrise_azimuth(dt, float(latitude), float(longitude), tzinfo or "UTC")
 
 def determine_solar_movement(yesterday_az, today_az):
     """Return solar movement direction: 'North' or 'South'."""
@@ -82,7 +91,6 @@ def determine_solar_movement(yesterday_az, today_az):
         def _determine_solar_movement(ya, ta):
             return "Stationary" if abs(ta - ya) < 1.0 else "North" if ta > ya else "South"
     
-    return _determine_solar_movement(yesterday_az, today_az)
     return _determine_solar_movement(yesterday_az, today_az)
 
 
