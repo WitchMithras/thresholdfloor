@@ -20,6 +20,396 @@ try:
 except Exception:
     pass
 
+# --- Latin → Elder Futhark transliteration -----------------------------------
+# Runes avoid horizontal strokes; this approximates Latin spelling using
+# Elder Futhark Unicode runes (U+16A0..U+16FF) with simple, readable rules.
+
+# Greedy multi-letter patterns first (lowercase, diacritics stripped)
+_ELDER_DIGRAPHS: list[tuple[str, str]] = [
+    ("ing", "ᛜ"),  # Ingwaz (preferred for the whole sequence)
+    ("ng",  "ᛝ"),  # Ingwaz (alt glyph) for final -ng
+    ("th",  "ᚦ"),  # Thurisaz
+    ("qu",  "ᚲᚹ"),  # kaunan + wunjo (kw)
+    ("ck",  "ᚲ"),   # treat "ck" as a single hard k
+    ("ch",  "ᚲ"),   # approximate hard/affricate ch with kaunan
+    ("sh",  "ᛋ"),   # sowilo for sh → s
+    ("ph",  "ᚠ"),   # fehu for f
+    ("ei",  "ᛇ"),   # eihwaz for ei/ey diphthongs
+    ("ey",  "ᛇ"),
+    ("gh",  "ᚷ"),   # simplify to gebo (g)
+]
+
+_ELDER_SINGLE: dict[str, str] = {
+    "a": "ᚨ",  # ansuz
+    "b": "ᛒ",  # berkano
+    "c": "ᚲ",  # kaunan (context rule refines below)
+    "d": "ᛞ",  # dagaz
+    "e": "ᛖ",  # ehwaz
+    "f": "ᚠ",  # fehu
+    "g": "ᚷ",  # gebo
+    "h": "ᚺ",  # hagalaz (ᚺ/ᚻ variants; pick ᚺ)
+    "i": "ᛁ",  # isa
+    "j": "ᛃ",  # jera (used for j/y glide)
+    "k": "ᚲ",  # kaunan
+    "l": "ᛚ",  # laguz
+    "m": "ᛗ",  # mannaz
+    "n": "ᚾ",  # naudiz
+    "o": "ᛟ",  # othala (commonly used for o)
+    "p": "ᛈ",  # pertho
+    "q": "ᚲᚹ",  # kw fallback if not caught as qu
+    "r": "ᚱ",  # raido
+    "s": "ᛋ",  # sowilo
+    "t": "ᛏ",  # tiwaz
+    "u": "ᚢ",  # uruz
+    "v": "ᚹ",  # approximate v with wunjo (w)
+    "w": "ᚹ",  # wunjo
+    "x": "ᚲᛋ",  # ks → kaunan+sowilo
+    "y": "ᛃ",  # jera (y as consonant/vowel glide)
+    "z": "ᛉ",  # algiz
+}
+
+def _strip_diacritics(text: str) -> str:
+    """Return ``text`` with combining marks removed and common letterforms
+    normalized (e.g., ß→ss, þ/ð→th, æ→ae, œ→oe).
+    """
+    # Normalize to compatibility form and drop combining marks
+    decomposed = ud.normalize("NFKD", text)
+    out: list[str] = []
+    for ch in decomposed:
+        if ud.combining(ch):
+            continue
+        # explicit common folds
+        if ch == "ß":
+            out.append("ss")
+            continue
+        if ch in ("þ", "Þ", "ð", "Ð"):
+            out.append("th")
+            continue
+        if ch in ("æ", "Æ"):
+            out.append("ae")
+            continue
+        if ch in ("œ", "Œ"):
+            out.append("oe")
+            continue
+        if ch in ("ø", "Ø"):
+            out.append("o")
+            continue
+        if ch in ("å", "Å"):
+            out.append("a")
+            continue
+        out.append(ch)
+    return "".join(out)
+
+def is_elder_rune(ch: str) -> bool:
+    """True if ``ch`` is within the Runic Unicode block U+16A0–U+16FF."""
+    return len(ch) == 1 and "\u16A0" <= ch <= "\u16FF"
+
+def latin_to_elder_runes(text: str, use_word_divider: bool = False) -> str:
+    """Transliterate Latin text to Elder Futhark runes.
+
+    - Greedy digraphs: th, ng/ing, ch, sh, ph, qu, ck, ei/ey.
+    - Contextual ``c``: before e/i/y → ᛋ (s), else ᚲ (k).
+    - Approximations: v→ᚹ (w), x→ᚲᛋ (ks), q→ᚲᚹ (kw).
+    - Spaces preserved by default; set ``use_word_divider=True`` to
+      render spaces as runic dividers: ᛫ for normal word gaps, ᛭ when the
+      next non-space character is a capital ("capital space").
+    - When ``use_word_divider`` is enabled, common punctuation maps to runic
+      separators (and suppresses any divider immediately after the punctuation):
+        , → ᛬   ; → ⁝   . → ᛫᛫   …/… → ᛫᛫᛫   ? → ᛫   ! → ᛬᛬
+
+    This aims for legibility and the rune aesthetic (no horizontal strokes),
+    not historical phonology.
+    """
+    # 1) Normalize diacritics and special letterforms
+    base = _strip_diacritics(text)
+
+    # 2) Walk input greedily
+    out: list[str] = []
+    i = 0
+    n = len(base)
+    while i < n:
+        ch = base[i]
+
+        # whitespace
+        if ch.isspace():
+            if use_word_divider:
+                # Lookahead to decide if this is a capital-space (᛭)
+                j = i + 1
+                nxt_cap = False
+                while j < n and base[j].isspace():
+                    j += 1
+                if j < n:
+                    nxt = base[j]
+                    if nxt.isalpha() and nxt.isupper():
+                        nxt_cap = True
+                out.append("᛭" if nxt_cap else "᛫")
+            else:
+                out.append(ch)
+            i += 1
+            continue
+
+        # punctuation / digits
+        if not ch.isalpha():
+            if use_word_divider:
+                rest = base[i:]
+                if rest.startswith("..."):
+                    out.append("᛫᛫᛫")
+                    i += 3
+                    # swallow following whitespace; do not emit divider after punctuation
+                    while i < n and base[i].isspace():
+                        i += 1
+                    continue
+                if ch == "…":  # unicode ellipsis
+                    out.append("᛫᛫᛫")
+                    i += 1
+                    while i < n and base[i].isspace():
+                        i += 1
+                    continue
+                if ch == ".":
+                    out.append("᛫᛫")
+                    i += 1
+                    while i < n and base[i].isspace():
+                        i += 1
+                    continue
+                if ch == "!":
+                    out.append("᛬᛬")
+                    i += 1
+                    while i < n and base[i].isspace():
+                        i += 1
+                    continue
+                if ch == "?":
+                    out.append("᛫")
+                    i += 1
+                    while i < n and base[i].isspace():
+                        i += 1
+                    continue
+                if ch == ";":
+                    out.append("⁝")
+                    i += 1
+                    while i < n and base[i].isspace():
+                        i += 1
+                    continue
+                if ch == ",":
+                    out.append("᛬")
+                    i += 1
+                    while i < n and base[i].isspace():
+                        i += 1
+                    continue
+            out.append(ch)
+            i += 1
+            continue
+
+        # normalize to lowercase for matching, but keep original for pass-through
+        rest = base[i:].lower()
+
+        # tri/di-graph handling (greedy order as defined)
+        matched = False
+        for pat, rune in _ELDER_DIGRAPHS:
+            if rest.startswith(pat):
+                out.append(rune)
+                i += len(pat)
+                matched = True
+                break
+        if matched:
+            continue
+
+        c = rest[0]
+        # contextual 'c'
+        if c == "c":
+            nxt = rest[1:2]
+            out.append("ᛋ" if nxt in ("e", "i", "y") else "ᚲ")
+            i += 1
+            continue
+
+        # q/x handled here if they slipped past digraphs
+        if c == "q":
+            out.append("ᚲᚹ")
+            i += 1
+            continue
+        if c == "x":
+            out.append("ᚲᛋ")
+            i += 1
+            continue
+
+        rune = _ELDER_SINGLE.get(c)
+        out.append(rune if rune is not None else base[i])
+        i += 1
+
+    return "".join(out)
+
+def elder_runes(text: str) -> str:
+    """Alias for ``latin_to_elder_runes`` (default settings)."""
+    return latin_to_elder_runes(text)
+
+# --- Appearance-first rune selection -----------------------------------------
+# Choose runes purely by visual resemblance to Latin letters.
+# You can customize by editing RUNE_APPEARANCE_CUSTOM below.
+
+RUNE_APPEARANCE_DEFAULT: dict[str, str] = {
+    # Core shapes that resemble Latin letters
+    "a": "ᛃ", 
+    "b": "ᛒ", 
+    "c": "ᛈ", 
+    "d": "ᚦ", 
+    "e": "ᛊ",
+    "f": "ᚨ",
+    "g": "ᛟ",
+    "h": "ᚺ", 
+    "i": "ᛁ", 
+    "j": "ᚾ",
+    "k": "ᚲ", 
+    "l": "ᛚ", 
+    "m": "ᛖ", 
+    "n": "ᚢ", 
+    "o": "ᛜ", 
+    "p": "ᚹ", 
+    "q": "ᛟ", 
+    "r": "ᚱ", 
+    "s": "ᛋ", 
+    "t": "ᛏ", 
+    "u": "ᚠ", 
+    "v": "ᛞ",  
+    "w": "ᛗ", 
+    "x": "ᚷ", 
+    "y": "ᛉ", 
+    "z": "ᛋ", 
+}
+
+# Your explicit preferences (pure shape picks). These override defaults.
+RUNE_APPEARANCE_CUSTOM: dict[str, str] = {
+    # Examples provided by you:
+    "y": "ᛉ",  # Y→Algiz
+    "t": "ᚾ",  # T→Naudiz
+}
+
+# Build the working map, allowing later code to update RUNE_APPEARANCE_CUSTOM.
+RUNE_APPEARANCE: dict[str, str] = {**RUNE_APPEARANCE_DEFAULT, **RUNE_APPEARANCE_CUSTOM}
+# Common misspelling alias so imports like `rune_apperance` work too
+RUNE_APPERANCE = RUNE_APPEARANCE
+
+def set_rune_appearance_override(letter: str, rune: str) -> None:
+    """Override the appearance mapping for a single Latin letter."""
+    if not letter:
+        return
+    key = letter.lower()[0]
+    RUNE_APPEARANCE_CUSTOM[key] = rune
+    RUNE_APPEARANCE[key] = rune
+
+def latin_to_elder_by_appearance(
+    text: str,
+    use_word_divider: bool = False,
+    mapping: Optional[dict[str, str]] = None,
+) -> str:
+    """Render text using runes chosen by visual resemblance only.
+
+    - Letters map via ``mapping`` (defaults to ``RUNE_APPEARANCE``).
+    - Spaces preserved, or replaced with ᛫ (or ᛭ when followed by a
+      capital) if ``use_word_divider``.
+    - With ``use_word_divider``, punctuation maps to runic separators
+      and suppresses any divider immediately after the punctuation:
+      , → ᛬   ; → ⁝   . → ᛫᛫   …/… → ᛫᛫᛫   ? → ᛫   ! → ᛬᛬
+    """
+    mp = (mapping or RUNE_APPEARANCE)
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        # spaces → ᛫ or ᛭ depending on next capital
+        if ch.isspace():
+            if use_word_divider:
+                j = i + 1
+                nxt_cap = False
+                while j < n and text[j].isspace():
+                    j += 1
+                if j < n:
+                    nxt = text[j]
+                    if nxt.isalpha() and nxt.isupper():
+                        nxt_cap = True
+                out.append("᛭" if nxt_cap else "᛫")
+            else:
+                out.append(ch)
+            i += 1
+            continue
+
+        # punctuation mapping when enabled
+        if not ch.isalpha():
+            if use_word_divider:
+                rest = text[i:]
+                if rest.startswith("..."):
+                    out.append("᛫᛫᛫")
+                    i += 3
+                    while i < n and text[i].isspace():
+                        i += 1
+                    continue
+                if ch == "…":
+                    out.append("᛫᛫᛫")
+                    i += 1
+                    while i < n and text[i].isspace():
+                        i += 1
+                    continue
+                if ch == ".":
+                    out.append("᛫᛫")
+                    i += 1
+                    while i < n and text[i].isspace():
+                        i += 1
+                    continue
+                if ch == "!":
+                    out.append("᛬᛬")
+                    i += 1
+                    while i < n and text[i].isspace():
+                        i += 1
+                    continue
+                if ch == "?":
+                    out.append("᛫~")
+                    i += 1
+                    while i < n and text[i].isspace():
+                        i += 1
+                    continue
+                if ch == ";":
+                    out.append("⁝")
+                    i += 1
+                    while i < n and text[i].isspace():
+                        i += 1
+                    continue
+                if ch == ",":
+                    out.append("᛬")
+                    i += 1
+                    while i < n and text[i].isspace():
+                        i += 1
+                    continue
+            out.append(ch)
+            i += 1
+            continue
+
+        # letters
+        out.append(mp.get(ch.lower(), ch))
+        i += 1
+    return "".join(out)
+
+def rune_appearance(ch: str) -> str:
+    """Single-character helper: best visual-match rune for ``ch``.
+    Falls back to original if not a-z.
+    """
+    return RUNE_APPEARANCE.get(ch.lower(), ch)
+
+# Keep the misspelled helper as an alias for convenience
+def rune_apperance(ch: str) -> str:  # noqa: D401
+    return rune_appearance(ch)
+
+PHASES = {'☊': 'ascending', '☋': 'descending'}
+PLANETS = {
+    '☿': 'Mercury',
+    '♀': 'Venus',
+    '♂': 'Mars',
+    '♃': 'Jupiter',
+    '♄': 'Saturn',
+    '♅': 'Uranus',
+    '♆': 'Neptune',
+    '♇': 'Pluto',
+    '☉': 'Sun',
+    '☽': 'Moon'
+}
 SIGNS = {
     '♈': 'Aries',
     '♉': 'Taurus',
@@ -75,6 +465,168 @@ TREE_LOOKUP = {
     'ᛜ': 'Apple', 
     'ᛞ': 'Spruce', 
     'ᛟ': 'Pine',
+}
+
+ELEMENTS = {
+    'Δ': 'Air',
+    '▽': 'Water',
+    '△': 'Fire',
+    '♁': 'Earth',
+    '⚶': 'Spirit',
+}
+HEBREW_LOOKUP = {
+    'Δ':  'א',   # Aleph
+    '☿': 'ב',   # Beth
+    '☽': 'ג',   # Gimel
+    '♀': 'ד',   # Daleth
+    '♈': 'ה',   # Heh
+    '♉': 'ו',   # Vav
+    '♊': 'ז',   # Zayin
+    '♋': 'ח',   # Cheth
+    '♌': 'ט',   # Teth
+    '♍': 'י',   # Yod
+    '♃': 'כ',   # Kaph
+    '♎': 'ל',   # Lamed
+    '▽': 'מ',   # Mem
+    '♏': 'נ',   # Nun
+    '♐': 'ס',   # Samekh
+    '♑': 'ע',   # Ayin
+    '♂': 'פ',   # Peh
+    '♒': 'צ',   # Tzaddi
+    '♓': 'ק',   # Qoph
+    '☉': 'ר',   # Resh
+    '△': 'ש',   # Shin
+    '♄': 'ת',   # Tav
+    '♁': 'ת',   # Tav (Earth row duplicates Tav)
+    # Rows 24 – 27 (Spirit, Uranus, Neptune, Pluto) have “n/a” in the book.
+}
+LATIN_TO_HEBREW = {
+    'a': ('א', 'ע'),
+    'b': 'ב',
+    'c': ('כ', 'ק'),
+    'd': 'ד',
+    'e': 'ה',
+    'f': 'פ',
+    'g': 'ג',
+    'h': ('ה', 'ח'),
+    'i': 'י',
+    'j': 'י',
+    'k': ('כ', 'ק'),
+    'l': 'ל',
+    'm': 'מ',
+    'n': 'נ',
+    'o': 'ע',
+    'p': 'פ',
+    'q': 'ק',
+    'r': 'ר',
+    's': ('ס', 'ש'),
+    't': ('ת', 'ט', 'צ'),
+    'u': 'ו',
+    'v': 'ו',
+    'w': 'ו',
+    'x': 'ס',
+    'y': 'י',
+    'z': 'ז',
+}
+HEBREW_TO_EARLY = {
+    # 1  Ox head          →  𓃾  (Gardiner F001)                                       :contentReference[oaicite:0]{index=0}
+    'א': '𓃾',
+    # 2  Tent / house-plan →  𓉐  (O001)                                              :contentReference[oaicite:1]{index=1}
+    'ב': '𓉐',
+    # 3  Foot              →  𓃀  (D058)                                              :contentReference[oaicite:2]{index=2}
+    'ג': '𓃀',
+    # 4  Door / door-bolt  →  𓊃  (O034)                                              :contentReference[oaicite:3]{index=3}
+    'ד': '𓊃',
+    # 5  Man, arms raised  →  𓀠  (A028)                                              :contentReference[oaicite:4]{index=4}
+    'ה': '𓀠',
+    # 6  Tent-peg / stake  →  𓌡  (T21 “harpoon”)                                     :contentReference[oaicite:5]{index=5}
+    'ו': '𓌡',
+    # 7  Mattock / weapon  →  𓌔  (T14 axe-type weapon)                               :contentReference[oaicite:6]{index=6}
+    'ז': '𓌔',
+    # 8  Tent-wall / fence →  𓉻  (O029 “wall of mats”)                               :contentReference[oaicite:7]{index=7}
+    'ח': '𓉻',
+    # 9  Basket            →  𓎟  (V30)                                              :contentReference[oaicite:8]{index=8}
+    'ט': '𓎟',
+    #10  Arm & closed hand →  𓂧  (D041 “arm”)                                       :contentReference[oaicite:9]{index=9}
+    'י': '𓂧',
+    #11  Open palm         →  𓂝  (D036 “open hand/palm”)                            :contentReference[oaicite:10]{index=10}
+    'כ': '𓂝',  'ך': '𓂝',
+    #12  Shepherd’s staff  →  𓌳  (S039 arrow-staff)                                 :contentReference[oaicite:11]{index=11}
+    'ל': '𓌳',
+    #13  Water             →  𓈖  (N035 “water”)                                     :contentReference[oaicite:12]{index=12}
+    'מ': '𓈖',  'ם': '𓈖',
+    #14  Seed / sprout     →  𓆓  (M23 “grain”)                                      :contentReference[oaicite:13]{index=13}
+    'נ': '𓆓',  'ן': '𓆓',
+    #15  Thorn / grabber   →  𓊩  (T22 “thorn branch”)                               :contentReference[oaicite:14]{index=14}
+    'ס': '𓊩',
+    #16  Eye               →  𓂀  (D004 “eye”)                                       :contentReference[oaicite:15]{index=15}
+    'ע': '𓂀',
+    #17  Mouth             →  𓂋  (D021 “mouth”)                                     :contentReference[oaicite:16]{index=16}
+    'פ': '𓂋',  'ף': '𓂋',
+    #18  Trail / path      →  𓊪  (T12 “sling; path”)                                :contentReference[oaicite:17]{index=17}
+    'צ': '𓊪',  'ץ': '𓊪',
+    #19  Sun-on-horizon    →  𓇳  (N005 sun-disk)                                    :contentReference[oaicite:18]{index=18}
+    'ק': '𓇳',
+    #20  Human head        →  𓁶  (C001 “head”)                                      :contentReference[oaicite:19]{index=19}
+    'ר': '𓁶',
+    #21  Two teeth         →  𓏏  (X001 loaf—Egyptian used for ‘t’; looks like teeth) :contentReference[oaicite:20]{index=20}
+    'ש': '𓏏',
+    #22  Crossed sticks    →  𓎼  (V31 basket-with-handle crossed)                   :contentReference[oaicite:21]{index=21}
+    'ת': '𓎼',
+}
+HIEROGLYPH_LOOKUP = {
+    'Δ':  '𓄿',   # G1 – vulture  (Air)
+    '☿': '𓇋',   # M17 – reed leaf (Mercury)
+    '☽': '𓏌',   # W24 – ripple / lunar bowl (Moon)
+    '♀': '𓊵',   # R4  – mouth / boat (Venus)
+    '♈': '𓊄',   # O35 – square seat (Aries)
+    '♉': '𓅱',   # G43 – quail chick (Taurus)
+    '♊': '𓏭',   # Z4  – doubles / twin strokes (Gemini)
+    '♋': '𓆓',   # I10 – backbone (Cancer)
+    '♌': '𓉽',   # O30 – throne (Leo)
+    '♍': '𓂋',   # D21 – hand (Virgo)
+    '♃': '𓂉',   # D19 – cupped hand (Jupiter)
+    '♎': '𓁩',   # C12 – placenta / scales (Libra)
+    '▽': '𓈖',   # N35 – pool of water (Water)
+    '♏': '𓇓',   # M23 – zig-zag water / scorpion’s tail (Scorpio)
+    '♐': '𓋿',   # S39 – arrow (Sagittarius)
+    '♑': '𓋔',   # S3  – tethering rope (Capricorn)
+    '♂': '𓇼',   # N14 – square enclosure (Mars)
+    '♒': '𓆑',   # I9  – twisted flax (Aquarius)
+    '♓': '𓆓',   # I10 – fish (Pisces)  [same char as Cancer row in many tables]
+    '☉': '𓇳',   # N5  – sun disc (Sol)  ← U+131F3
+    '△': '𓊈',   # Q7  – flame (Fire)    ← U+13288
+    '♄': '𓋬',   # S29 – half cord (Saturn)
+    '♁': '𓇴',   # N16 – mound of earth (Earth)
+    '⚶': '𓊵',   # reuse R4 (Spirit had its own “solar disc inside serpent” in Crowley)
+    # Special planetary glyphs (rows 25–27) were custom in Crowley’s table:
+}
+RUNE_LOOKUP = {
+    '♈': ['ᚠ', 'ᚢ'],
+    '♉': ['ᚦ', 'ᚨ'],
+    '♊': ['ᚱ', 'ᚲ'],
+    '♋': ['ᚷ', 'ᚹ'],
+    '♌': ['ᚺ', 'ᚾ'],
+    '♍': ['ᛁ', 'ᛃ'],
+    '♎': ['ᛇ', 'ᛈ'],
+    '♏': ['ᛉ', 'ᛊ'],
+    '♐': ['ᛏ', 'ᛒ'],
+    '♑': ['ᛖ', 'ᛗ'],
+    '♒': ['ᛚ', 'ᛜ'],
+    '♓': ['ᛞ', 'ᛟ'],
+    '☿': ['ᚺ', 'ᛃ'],
+    '♀': ['ᚠ', 'ᚲ', 'ᚹ', 'ᚾ', 'ᛁ', 'ᛈ', 'ᛒ', 'ᛖ', 'ᛚ'],
+    '♂': ['ᚢ', 'ᚦ', 'ᚨ', 'ᚱ', 'ᚷ', 'ᛇ', 'ᛉ', 'ᛊ', 'ᛏ', 'ᛗ', 'ᛜ', 'ᛞ', 'ᛟ'],
+    '♃': ['ᚢ', 'ᚦ', 'ᚨ', 'ᚱ', 'ᚷ', 'ᛇ', 'ᛉ', 'ᛊ', 'ᛏ', 'ᛗ', 'ᛜ', 'ᛞ', 'ᛟ'],
+    '♄': ['ᚺ', 'ᛃ'],
+    '☉': ['ᚢ', 'ᚦ', 'ᚨ', 'ᚱ', 'ᚷ', 'ᛇ', 'ᛉ', 'ᛊ', 'ᛏ', 'ᛗ', 'ᛜ', 'ᛞ', 'ᛟ'],
+    '☽': ['ᚠ', 'ᚲ', 'ᚹ', 'ᚺ', 'ᚾ', 'ᛁ', 'ᛃ', 'ᛈ', 'ᛒ', 'ᛖ', 'ᛚ'],
+    '☊': ['ᚠ', 'ᚲ', 'ᚹ', 'ᚺ', 'ᚾ', 'ᛁ', 'ᛃ', 'ᛈ', 'ᛒ', 'ᛖ', 'ᛚ'],
+    '☋': ['ᚺ', 'ᛃ'],
+    'Δ': ['ᚨ', 'ᚷ', 'ᚾ', 'ᛃ', 'ᛖ', 'ᛞ'],
+    '▽': ['ᛚ', 'ᚺ', 'ᛁ', 'ᛇ', 'ᛈ', 'ᛚ'],
+    '△': ['ᚠ', 'ᚦ', 'ᚱ', 'ᚲ', 'ᛉ', 'ᛊ', 'ᛏ', 'ᛗ'],
+    '♁': ['ᚢ', 'ᚹ', 'ᛒ', 'ᛜ', 'ᛟ']
 }
 
 ZODIAC_TINTS = {
