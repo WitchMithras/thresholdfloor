@@ -13,7 +13,7 @@
 # ignore ALL .bsp files
 *.bsp
 *.db
-*.png
+
 *.jpg
 *.key
 
