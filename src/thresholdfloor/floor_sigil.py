@@ -906,6 +906,160 @@ def latin_from(glyph: str) -> str:
     # otherwise it’s a non-empty list
     return random.choice(variants)
 
+# ---------------------------------------------------------------------
+# Blending helpers
+# ---------------------------------------------------------------------
+
+def _blend_modes(base: Image.Image, overlay: Image.Image, mode: str) -> Image.Image:
+    """
+    Blend overlay over base. Both must be RGBA, same size.
+    Supported modes: normal, multiply, screen, add.
+    """
+    mode = (mode or "normal").lower()
+    if mode == "normal":
+        out = base.copy()
+        out.alpha_composite(overlay)
+        return out
+    # Convert to RGB for ImageChops ops; preserve alpha by compositing a mask
+    base_rgb = base.convert("RGB")
+    ov_rgb  = overlay.convert("RGB")
+    if mode == "multiply":
+        blend_rgb = ImageChops.multiply(base_rgb, ov_rgb)
+    elif mode == "screen":
+        blend_rgb = ImageChops.screen(base_rgb, ov_rgb)
+    elif mode == "add":
+        blend_rgb = ImageChops.add(base_rgb, ov_rgb, scale=1.0, offset=0)
+    else:
+        # Fallback to normal if unknown
+        out = base.copy()
+        out.alpha_composite(overlay)
+        return out
+
+    # Reapply alpha compositing using overlay's alpha as mask
+    out = base.copy()
+    mask = overlay.split()[-1]
+    out.paste(blend_rgb, (0, 0), mask)
+    return out
+
+# ---------------------------------------------------------------------
+# Positioning & tiling
+# ---------------------------------------------------------------------
+
+def _position_for(layer_size: Tuple[int, int], base_size: Tuple[int, int], position: str, margin: int = 16) -> Tuple[int, int]:
+    lw, lh = layer_size
+    W, H = base_size
+    position = (position or "bottom-right").lower()
+
+    if position == "center":
+        return ( (W - lw) // 2, (H - lh) // 2 )
+    if position == "top-left":
+        return ( margin, margin )
+    if position == "top-right":
+        return ( W - lw - margin, margin )
+    if position == "bottom-left":
+        return ( margin, H - lh - margin )
+    if position == "random":
+        return ( random.randint(margin, max(margin, W - lw - margin)),
+                 random.randint(margin, max(margin, H - lh - margin)) )
+    # default bottom-right
+    return ( W - lw - margin, H - lh - margin )
+
+def _make_tiled_overlay(tile: Image.Image, canvas_size: Tuple[int, int], step: Optional[int] = None, jitter: int = 0) -> Image.Image:
+    """
+    Repeats `tile` across a full-size transparent canvas.
+    `step` controls spacing; defaults to tile width.
+    `jitter` randomly perturbs each tile a few pixels for chaos.
+    """
+    W, H = canvas_size
+    tw, th = tile.size
+    step = step or tw
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    y = -th // 2
+    while y < H + th:
+        x = -tw // 2
+        while x < W + tw:
+            jx = x + random.randint(-jitter, jitter) if jitter else x
+            jy = y + random.randint(-jitter, jitter) if jitter else y
+            overlay.alpha_composite(tile, (jx, jy))
+            x += step
+        y += step
+    return overlay
+
+# ---------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------
+
+def stamp_sigil_onto_image(
+    base: Union[str, Image.Image],
+    sigil_key_or_path: str,
+    *,
+    scale: float = 0.18,
+    rotation_deg: float = 0.0,
+    colorize: Optional[Union[str, Tuple[int, int, int]]] = None,
+    opacity: float = 0.35,
+    glow_radius: int = 0,
+    blend: str = "multiply",
+    position: str = "bottom-right",  # 'center', 'top-left', 'top-right', 'bottom-left', 'bottom-right', 'random', or 'tile'
+    margin: int = 16,
+    tile_step: Optional[int] = None,
+    tile_jitter: int = 0
+) -> Image.Image:
+    """
+    Returns a new PIL Image with the sigil stamped.
+    """
+    # Load base image
+    if isinstance(base, str):
+        base_img = _load_pil_bundle_first(base)
+    else:
+        base_img = base.convert("RGBA")
+
+    # Load sigil
+    sigil = _load_pil_bundle_first(sigil_key_or_path)
+
+    # Prepare sigil layer (resized/rotated/colored/glow/opacity)
+    layer = _make_sigil_layer(
+        sigil, base_img.size,
+        scale=scale,
+        rotation_deg=rotation_deg,
+        colorize=colorize,
+        opacity=opacity,
+        glow_radius=glow_radius
+    )
+
+    if position.lower() == "tile":
+        overlay = _make_tiled_overlay(layer, base_img.size, step=tile_step, jitter=tile_jitter)
+        return _blend_modes(base_img, overlay, blend)
+
+    # Single placement
+    lw, lh = layer.size
+    ox, oy = _position_for((lw, lh), base_img.size, position, margin=margin)
+    overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+    overlay.alpha_composite(layer, (ox, oy))
+
+    return _blend_modes(base_img, overlay, blend)
+
+def stamp_sigil_to_file(
+    in_path_or_img: Union[str, Image.Image],
+    sigil_key_or_path: str,
+    *,
+    out_path: Optional[str] = None,
+    out_bundle_key: Optional[str] = None,
+    out_format: str = "PNG",
+    **kwargs
+) -> str:
+    """
+    Convenience wrapper: stamps, then saves to disk and/or bundle.
+    Returns the bundle key if provided; otherwise the disk path.
+    """
+    stamped = stamp_sigil_onto_image(in_path_or_img, sigil_key_or_path, **kwargs)
+    # Default an output path if only an input string is given and no bundle key requested
+    if out_path is None and isinstance(in_path_or_img, str) and out_bundle_key is None:
+        stem, ext = os.path.splitext(in_path_or_img)
+        out_path = f"{stem}_sigil{ext or '.png'}"
+    return _save_image_bundle_and_or_disk(stamped, out_path, out_bundle_key, fmt=out_format)
+
+
+
 def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
     from PIL import Image, ImageEnhance, ImageFilter, ImageOps
     import math
