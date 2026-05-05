@@ -700,6 +700,212 @@ sprite_lookup = {
     for rune, tree_type in TREE_LOOKUP.items()
 }
 
+HEBREW_TO_PHOENICIAN = {
+    # ── regular letters 1-22 ────────────────────────
+    'א': '𐤀',  # Aleph   → ʾĀlep
+    'ב': '𐤁',  # Bet     → Bēt
+    'ג': '𐤂',  # Gimel   → Gīmel
+    'ד': '𐤃',  # Dalet   → Dālet
+    'ה': '𐤄',  # He      → Hē
+    'ו': '𐤅',  # Vav     → Wāw
+    'ז': '𐤆',  # Zayin   → Zayin
+    'ח': '𐤇',  # Ḥet    → Ḥēt
+    'ט': '𐤈',  # Tet     → Tēt
+    'י': '𐤉',  # Yod     → Yōd
+    'כ': '𐤊',  # Kaf     → Kāf
+    'ל': '𐤋',  # Lamed   → Lāmed
+    'מ': '𐤌',  # Mem     → Mēm
+    'נ': '𐤍',  # Nun     → Nūn
+    'ס': '𐤎',  # Samekh  → Sāmek
+    'ע': '𐤏',  # Ayin    → ʿAyin
+    'פ': '𐤐',  # Pe      → Pē/Phē
+    'צ': '𐤑',  # Tsade   → Ṣādē
+    'ק': '𐤒',  # Qof     → Qōp
+    'ר': '𐤓',  # Resh    → Rēš
+    'ש': '𐤔',  # Shin    → Šīn
+    'ת': '𐤕',  # Tav     → Tāw
+
+    # ── sofit (final) forms – map to the same Phoenician letter ──
+    'ך': '𐤊',  # Kaf-sofit
+    'ם': '𐤌',  # Mem-sofit
+    'ן': '𐤍',  # Nun-sofit
+    'ף': '𐤐',  # Pe-sofit
+    'ץ': '𐤑',  # Tsade-sofit
+}
+
+HEBREW_TO_ARABIC = {
+    # ── regular letters 1-22 ────────────────────────
+    'א': 'ا',  # Alif
+    'ב': 'ب',  # Bāʾ
+    'ג': 'ج',  # Jīm
+    'ד': 'د',  # Dāl
+    'ה': 'ه',  # Hāʾ
+    'ו': 'و',  # Wāw
+    'ז': 'ز',  # Zāy
+    'ח': 'ح',  # Ḥāʾ
+    'ט': 'ط',  # Ṭāʾ
+    'י': 'ي',  # Yāʾ
+    'כ': 'ك',  # Kāf
+    'ל': 'ل',  # Lām
+    'מ': 'م',  # Mīm
+    'נ': 'ن',  # Nūn
+    'ס': 'س',  # Sīn
+    'ע': 'ع',  # ʿAyn
+    'פ': 'ف',  # Fāʾ
+    'צ': 'ص',  # Ṣād
+    'ק': 'ق',  # Qāf
+    'ר': 'ر',  # Rāʾ
+    'ש': 'ش',  # Shīn
+    'ת': 'ت',  # Tāʾ
+
+    # ── sofit forms – point to the “same sound” Arabic letter ──
+    'ך': 'ك',  # Kāf
+    'ם': 'م',  # Mīm
+    'ן': 'ن',  # Nūn
+    'ף': 'ف',  # Fāʾ
+    'ץ': 'ص',  # Ṣād
+}
+
+
+def letters_alpha(text: str) -> list[str]:
+    """
+    Return a list of the alphabetic characters in *text*.
+    Works with accented letters and other scripts.
+    """
+    return [ch for ch in text if ud.category(ch).startswith("L")]
+
+def letters_alpha_with_spaces(text: str) -> list[str]:
+    return [ch if ch == ' ' or ud.category(ch).startswith("L") else '' for ch in text]
+
+def generate_fake_glyphs(phrase):
+    clean = letters_alpha_with_spaces(phrase)
+    glyphs = []
+    #usable = list(HIEROGLYPH_LOOKUP.values())
+    usable = list(HEBREW_TO_EARLY.values())
+
+    for ch in clean:
+        if ch == ' ':
+            glyphs.append(' ')  # preserve spacing
+        else:
+            glyphs.append(random.choice(usable))
+    return glyphs
+
+def generate_true_glyphs(phrase, output="phoen"):
+    clean = letters_alpha_with_spaces(phrase)
+    result = []
+    for ch in clean:
+        if ch == ' ':
+            result.append(' ')
+        else:
+            heb = latin_from(ch.lower())
+            symbo = hebrew_to_symbol(heb)
+
+            if output == "phoen":
+            
+                out = to_phoenician(heb)
+
+            elif output == "symbo":
+                out = symbo
+            elif output == "rune":
+                #out = latin_to_elder_by_appearance(ch.lower()) # Also works
+                out = rune_for(symbo)
+            elif output == "hyro":
+                #out = HEBREW_TO_EARLY(heb) # Also works
+                out = HIEROGLYPH_LOOKUP(symbo)
+            elif output == "arab":
+                out = HEBREW_TO_ARABIC(heb)[::-1]
+            else:
+                out = heb[::-1]
+            result.append(out)
+    return result
+
+
+def most_matched_rune(symbols: str, lookup: dict[str, list[str]] = RUNE_LOOKUP) -> str | None:
+    """
+    Given a string of zodiac / planetary symbols, return the rune that appears
+    most often across their lookup lists.  If there’s a tie, choose randomly.
+
+    Returns None if no symbol in the string has a lookup entry.
+    """
+    counts = Counter()
+    for s in symbols:
+        counts.update(lookup.get(s, []))   # silently ignore unknown symbols
+
+    if not counts:
+        return None                        # nothing matched
+
+    max_freq = max(counts.values())
+    top = [r for r, c in counts.items() if c == max_freq]
+    return random.choice(top)
+
+# ── tiny helpers, same pattern as before ─────────────────────────
+LATIN_TO_EARLY = {
+    lat: [HEBREW_TO_EARLY[h] for h in heb] if isinstance(heb, tuple)
+          else HEBREW_TO_EARLY.get(heb, heb)
+    for lat, heb in LATIN_TO_HEBREW.items()
+}
+
+# ───────────  tiny helpers  ───────────
+def hebrew_to_symbol(ch: str):
+    return next((k for k, v in HEBREW_LOOKUP.items() if v == ch.lower()), None)
+
+def latin_to_hebrew(ch: str):
+    return LATIN_TO_HEBREW.get(ch.lower(), ch)
+
+def latin_to_early(ch: str):
+    return LATIN_TO_EARLY.get(ch.lower(), ch)
+
+def latin_to_hebrew(ch: str):
+    """Best-guess Modern-Hebrew for a Latin letter (falls back to original)."""
+    return LATIN_TO_HEBREW.get(ch.lower(), ch)
+
+def hebrew_to_early(ch: str):
+    """Phoenician glyph for a Hebrew letter (falls back to original)."""
+    return HEBREW_TO_EARLY.get(ch, ch)
+
+def to_phoenician(hebrew: str) -> str:
+    """Look up the Phoenician equivalent of a Hebrew letter (falls back to original)."""
+    return HEBREW_TO_PHOENICIAN.get(hebrew, hebrew)
+
+def to_arabic(hebrew: str) -> str:
+    """Look up the Arabic equivalent of a Hebrew letter (falls back to original)."""
+    return HEBREW_TO_ARABIC.get(hebrew, hebrew)
+
+def hebrew_for(glyph: str) -> str:
+    """Return the Hebrew letter (symbol) for *glyph*, or the glyph itself if unknown."""
+    return HEBREW_LOOKUP.get(glyph, glyph)
+
+def hieroglyph_for(glyph: str) -> str:
+    """Return the Egyptian hieroglyph symbol for *glyph*, or the glyph itself if unknown."""
+    return HIEROGLYPH_LOOKUP.get(glyph, glyph)
+
+def rune_for(glyph: str) -> str:
+    """Return the rune (symbol) for *glyph*, or the glyph itself if unknown."""
+    variants = RUNE_LOOKUP.get(glyph)
+    if not variants:
+        # no entry or empty list → just return the glyph unchanged
+        return glyph
+
+    # if it’s stored as a single string, return that
+    if isinstance(variants, str):
+        return variants
+
+    # otherwise it’s a non-empty list
+    return random.choice(variants)
+
+def latin_from(glyph: str) -> str:
+    variants = LATIN_TO_HEBREW.get(glyph)
+    if not variants:
+        # no entry or empty list → just return the glyph unchanged
+        return glyph
+
+    # if it’s stored as a single string, return that
+    if isinstance(variants, str):
+        return variants
+
+    # otherwise it’s a non-empty list
+    return random.choice(variants)
+
 def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
     from PIL import Image, ImageEnhance, ImageFilter, ImageOps
     import math
