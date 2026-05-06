@@ -3,7 +3,7 @@ import math
 import random
 import io, os, tempfile
 from math import radians
-from datetime import timedelta
+from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from collections.abc import Mapping
 from moontime import moonstamp, MoonTime
@@ -279,14 +279,23 @@ def _alignment_snapshot(floor, observed_at):
     alignments = {}
 
     af = getattr(floor, "af", None)
-    if af is not None and hasattr(af, "sign"):
-        for body in CELESTIAL_BODIES:
-            try:
-                sign = af.sign(observed_at, body)
-            except Exception:
-                continue
-            if sign:
-                alignments[body] = sign
+
+    if af is not None and hasattr(af, "alignments"):
+        try:
+            alignments = af.alignments(observed_at)
+        except Exception:
+            pass
+
+    if not alignments:
+
+        if af is not None and hasattr(af, "sign"):
+            for body in CELESTIAL_BODIES:
+                try:
+                    sign = af.sign(observed_at, body)
+                except Exception:
+                    continue
+                if sign:
+                    alignments[body] = sign
 
     if not alignments:
         try:
@@ -304,8 +313,8 @@ def _sign_color(sign, lon, alignments):
         return _clamp_color(alignment_color, 255), _clamp_color(alignment_color, 190)
 
     color = ZODIAC_TINTS.get(sign, (200, 200, 255))
-    if not 90 < lon < 270:
-        color = _dim_color(color, 0.4)
+    #if not 90 < lon < 270:
+    #    color = _dim_color(color, 0.4)
     return _clamp_color(color, 240), None
 
 
@@ -499,6 +508,13 @@ def _load_sigil_font(font_size=36):
     except Exception as e:
         print(e)
         return ImageFont.load_default()
+
+
+def _safe_moonstamp():
+    try:
+        return moonstamp()
+    except Exception:
+        return datetime.utcnow().strftime("%Y%m%d%H%M%S")
 
 
 def _draw_sigil_background(size):
@@ -789,9 +805,11 @@ def tf_sigil(floor, size=400):
     #    width=3
     #)
         # Save final emotional disaster
-    full_path = f"heather_sigils/tf_sig_{moonstamp()}.png"
+    full_path = f"heather_sigils/tf_sig_{_safe_moonstamp()}.png"
 
     output_path = full_path.replace(".png", "_heathered.png")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    img.save(output_path, format="PNG")
     bundle_put_image(output_path, img, fmt="PNG")
     #show_sigil(output_path)
     return output_path
@@ -906,7 +924,7 @@ def animate_sigil(canvas, base_image_path, duration=4, floor=None, frame_count=2
 
     #frame_duration = duration / len(tk_imgs)
 
-    gif_path = os.path.join("heather_sigils", f"{moonstamp()}.gif")
+    gif_path = os.path.join("heather_sigils", f"{_safe_moonstamp()}.gif")
     buf = io.BytesIO()
     frames[0].save(
         buf,
@@ -916,7 +934,11 @@ def animate_sigil(canvas, base_image_path, duration=4, floor=None, frame_count=2
         duration=min(int(frame_duration * 1000), 655350),
         loop=0,
     )
-    bundle_put_bytes(gif_path, buf.getvalue())
+    gif_bytes = buf.getvalue()
+    os.makedirs(os.path.dirname(gif_path), exist_ok=True)
+    with open(gif_path, "wb") as f:
+        f.write(gif_bytes)
+    bundle_put_bytes(gif_path, gif_bytes)
 
     def update_frame(i=0):
         """Loop through frames endlessly, ping‑pong style."""

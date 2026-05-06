@@ -672,12 +672,12 @@ class ThresholdFloor:
 
     def sigil(self, size: int = 512, show: bool = True):
         try:
-            self.get_phase()
             sig = tf_sigil(self, size)
             if show:
                 show_sigil(sig, self)
             return sig
-        except Exception:
+        except Exception as e:
+            print(f"{self.name}: sigil generation failed: {e}")
             return None
 
     def compute_gdd(self, base_temp: float = 10) -> float:
