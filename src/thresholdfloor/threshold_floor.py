@@ -675,7 +675,7 @@ class ThresholdFloor:
             self.get_phase()
             sig = tf_sigil(self, size)
             if show:
-                show_sigil(sig)
+                show_sigil(sig, self)
             return sig
         except Exception:
             return None

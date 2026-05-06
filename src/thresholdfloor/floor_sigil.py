@@ -3,6 +3,7 @@ import math
 import random
 import io, os, tempfile
 from math import radians
+from datetime import timedelta
 from moontime import moonstamp, MoonTime
 from .bundle import _bundle_key_with_ext, _maybe_write_temp_png, bundle_put_bytes, _bundle_load, ASSET_BYTES, bundle_put_image, _resolve_asset_to_pil
 from aetherfield import rotated_zodiac
@@ -216,6 +217,7 @@ def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
 
     # 🧭 Rotate so it lays away from sun
     angle = (azimuth - 90) % 360
+    diff = 0
     if azimuth > 180: 
         diff = (azimuth - 180)
         angle = (180 - diff)
@@ -292,6 +294,149 @@ def overlay_tree_sprite(base_img, rune, position=None, size=48):
 
     base_img.paste(sprite, (int(x), int(y)), sprite)
     return base_img
+
+
+def _load_sigil_font(font_size=36):
+    font_path = "DejaVuSans.ttf"
+
+    try:
+        _bundle_load()
+        _bytes = ASSET_BYTES.get(font_path)
+
+        if _bytes:
+            return ImageFont.truetype(io.BytesIO(_bytes), font_size)
+
+        with open(font_path, "rb") as f:
+            raw_bytes = f.read()
+
+        bundle_put_bytes(font_path, raw_bytes)
+        return ImageFont.truetype(io.BytesIO(raw_bytes), font_size)
+
+    except Exception as e:
+        print(e)
+        return ImageFont.load_default()
+
+
+def _draw_sigil_background(size):
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.pieslice((0, 0, size, size), start=0, end=180, fill=(10, 10, 35, 255))
+    draw.pieslice((0, 0, size, size), start=180, end=360, fill=(20, 15, 10, 255))
+    return img
+
+
+def _draw_sigil_tree_axis(img, cx, cy, size=82):
+    rune = "\u16a8"
+    overlay_tree_sprite(
+        img,
+        rune,
+        position=(cx - (size / 2), cy - size),
+        size=size
+    )
+    return img
+
+
+def _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at):
+    try:
+        beam = floor.observe(observed_at)
+        sun = beam.get("sun")
+
+        if not sun:
+            return None, None
+
+        alt = sun["alt_apparent"]
+        az = sun["azimuth"]
+        sign = floor.af.sign(observed_at, "sun")
+        lon = az
+        signs = rotated_zodiac(sign)
+
+        for sign in signs:
+            theta = math.radians(lon)
+
+            x = cx + r * -math.sin(theta)
+            y = cy + r * math.cos(theta)
+
+            glyph = next((k for k, v in SIGNS.items() if v == sign), '?')
+
+            dx = x - cx
+            dy = y - cy
+            mag = math.hypot(dx, dy) or 1
+            ox = x + (dx / mag) * 12
+            oy = y + (dy / mag) * 12
+
+            if 90 < lon < 270:
+                color = COLOR_PALLET.get(sign, (200, 200, 255, 240))
+            else:
+                color = tuple(int(c * 0.4) for c in COLOR_PALLET.get(sign, (200, 200, 255, 240)))
+
+            glyph_img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+            glyph_draw = ImageDraw.Draw(glyph_img)
+
+            bbox = font.getbbox(glyph)
+            gw, gh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+            glyph_draw.text(
+                ((64 - gw) / 2, (64 - gh) / 2),
+                glyph,
+                font=font,
+                fill=color
+            )
+
+            angle = -math.degrees(theta)
+            angle -= 180
+
+            glyph_img = glyph_img.rotate(angle, resample=Image.BICUBIC, expand=True)
+
+            gw2, gh2 = glyph_img.size
+            px = ox - gw2 / 2
+            py = oy - gh2 / 2
+
+            img.paste(glyph_img, (int(px), int(py)), glyph_img)
+            lon += 30
+
+        return alt, az
+    except Exception as e:
+        print(e)
+        return None, None
+
+
+def _draw_sigil_shadow(img, cx, cy, alt, az, size=82):
+    if alt is not None and az is not None and alt > 0 and 90 < az < 270:
+        overlay_shadow_tree(
+            img,
+            rune="\u16c7",
+            cx=cx,
+            cy=cy,
+            azimuth=az,
+            altitude=alt,
+            size=size
+        )
+    return img
+
+
+def _render_clock_sigil_frame(floor, observed_at, size=512):
+    img = _draw_sigil_background(size)
+    cx, cy = size // 2, size // 2
+    tree_size = max(1, int(size * (82 / 400)))
+    _draw_sigil_tree_axis(img, cx, cy, size=tree_size)
+
+    font = _load_sigil_font(max(1, int(size * (36 / 400))))
+    r = int((size // 2) * 0.75)
+    alt, az = _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at)
+    _draw_sigil_shadow(img, cx, cy, alt, az, size=tree_size)
+
+    return img
+
+
+def _clock_frame_duration_seconds(start, frame_count, moontime_hours):
+    try:
+        mt = MoonTime.from_datetime(start)
+        if getattr(mt, "hour_length_seconds", None):
+            return (mt.hour_length_seconds * moontime_hours) / frame_count
+    except Exception:
+        pass
+
+    return (24 * 60 * 60) / frame_count
 
 
 def tf_sigil(floor, size=400):
@@ -466,7 +611,7 @@ def tf_sigil(floor, size=400):
     return output_path
 
 
-def show_sigil(image_key: str) -> str:
+def show_sigil(image_key: str, floor=None) -> str:
     """
     Display a sigil animation from a bundle-aware key or file path,
     and save the resulting GIF both to disk (as animate_sigil returns)
@@ -492,7 +637,7 @@ def show_sigil(image_key: str) -> str:
     local_png_path = _maybe_write_temp_png(image_key)
 
     # Run your existing animator (expects a canvas + path)
-    gif_path = animate_sigil(canvas, local_png_path)
+    gif_path = animate_sigil(canvas, local_png_path, floor=floor)
 
     # Persist GIF into the bundle under a stable logical key
     try:
@@ -537,32 +682,42 @@ def sigil_corruptor(img, passes=3, intensity=2):
 
     return img
 
-def animate_sigil(canvas, base_image_path, duration=4):
+def animate_sigil(canvas, base_image_path, duration=4, floor=None, frame_count=24, moontime_hours=24):
     """Animate a sigil on the given canvas and save the frames as a GIF."""
     if not TK_EXISTS:
         return None
     base_img = Image.open(base_image_path).resize((512, 512))
     frames = []
 
-    # Build animation frames
-    for i in range(5):
-        shifted     = apply_color_shift(base_img.copy(), i * 5)
-        #blurred     = apply_blur(shifted, i * 0.4)
-        #pixelated   = apply_pixelation(blurred, max(1, 6 - i))
-        # instead of blurred or pixelated, or also
-        glowy = glow_layer(shifted.copy(), passes=2)
-        frames.append(glowy)
+    if floor is not None:
+        start = floor.now()
+        tick = timedelta(hours=moontime_hours / frame_count)
+        frame_duration = _clock_frame_duration_seconds(start, frame_count, moontime_hours)
+
+        for i in range(frame_count):
+            observed_at = start + (tick * i)
+            frame = _render_clock_sigil_frame(floor, observed_at, size=512)
+            frames.append(glow_layer(frame.copy(), passes=1))
+    else:
+        # Build animation frames
+        for i in range(5):
+            shifted     = apply_color_shift(base_img.copy(), i * 5)
+            #blurred     = apply_blur(shifted, i * 0.4)
+            #pixelated   = apply_pixelation(blurred, max(1, 6 - i))
+            # instead of blurred or pixelated, or also
+            glowy = glow_layer(shifted.copy(), passes=2)
+            frames.append(glowy)
 
         #frames.append(pixelated)
 
     # Add the reversed sequence so we “breathe” back to calm
-    frames += frames[::-1]
+        frames += frames[::-1]
+        frame_duration = (get_frame_rhythm() * duration) / len(frames)
 
     # Display animation
     img_obj = canvas.create_image(0, 0, anchor='nw')
     tk_imgs = [ImageTk.PhotoImage(f) for f in frames]
 
-    frame_duration = (get_frame_rhythm() * duration) / len(tk_imgs)
     #frame_duration = duration / len(tk_imgs)
 
     gif_path = os.path.join("heather_sigils", f"{moonstamp()}.gif")
@@ -572,7 +727,7 @@ def animate_sigil(canvas, base_image_path, duration=4):
         format="GIF",
         save_all=True,
         append_images=frames[1:],
-        duration=int(frame_duration * 1000),
+        duration=min(int(frame_duration * 1000), 655350),
         loop=0,
     )
     bundle_put_bytes(gif_path, buf.getvalue())
