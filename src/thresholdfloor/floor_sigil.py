@@ -5,6 +5,7 @@ import io, os, tempfile
 from math import radians
 from moontime import moonstamp, MoonTime
 from .bundle import _bundle_key_with_ext, _maybe_write_temp_png, bundle_put_bytes, _bundle_load, ASSET_BYTES, bundle_put_image, _resolve_asset_to_pil
+from aetherfield import rotated_zodiac
 
 TK_EXISTS = False
 PIL_EXISTS = False
@@ -210,17 +211,17 @@ def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
 
     inc = size * stretch
     new_h = int(size + inc)  # flatten vertically
-
+    sprite_offset = -90
     sprite = sprite.resize((new_w, new_h), Image.LANCZOS)
 
     # 🧭 Rotate so it lays away from sun
-    angle = azimuth#  + 180 % 360
-    if azimuth > 180:
-        diff = (azimuth - 180) * 2 # Switch
-        angle -= diff 
-    elif azimuth < 180:
-        diff = (180 - azimuth) * 2 # Switch
-        angle += diff 
+    angle = (azimuth - 90) % 360
+    if azimuth > 180: 
+        diff = (azimuth - 180)
+        angle = (180 - diff)
+    elif azimuth < 180: 
+        diff = (180 - azimuth)
+        angle = (180 + diff)
 
     sprite = sprite.rotate(angle, resample=Image.BICUBIC, expand=True)
 
@@ -231,12 +232,15 @@ def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
     # After rotation, base ≈ center-bottom of the image
     if azimuth >= 180:
 
-        x = cx - w * min(1, diff / 40)
+        x = cx - w * min(1, diff // 20)
+
         #y = cy
 
     else:
         x = cx
+
         #y = cy - w
+    #x = cx
 
     y = cy
 
@@ -332,77 +336,82 @@ def tf_sigil(floor, size=400):
 
     # Horizon line
     #draw.line((0, cy, size, cy), fill=(180, 120, 80, 180), width=2)
+    # 🌞 Shadow using floor.observe()
+    try:
+        beam = floor.observe()
+        sun = beam.get("sun")
 
-    # 🐍 Zodiac slices
-    above = floor.as_above()
-    below = floor.so_below()
-    full = above + list(reversed(below))
+        if sun:
+            alt = sun["alt_apparent"]
+            az  = sun["azimuth"]
 
-    for entry in full:
-        lon = entry["center_lon"]
-        sign = entry["sign"]
+        sign = floor.af.sign(floor.now(), "sun")
+        lon = az
+        signs = rotated_zodiac(sign)
 
+        for sign in signs:
 
-        phase_offset = entry.get("phase", 0.0)
-        theta = math.radians(lon + phase_offset * 30 - 90)
-        #theta = math.radians(lon - 103)
+            theta = math.radians(lon)
 
-        x = cx + r * -math.sin(theta)
-        y = cy - r *  math.cos(theta)
+            x = cx + r * -math.sin(theta)
+            y = cy + r * math.cos(theta)
 
-        glyph = next((k for k, v in SIGNS.items() if v == sign), '?')
+            glyph = next((k for k, v in SIGNS.items() if v == sign), '?')
 
-        # Offset slightly outward
-        dx = x - cx
-        dy = y - cy
-        mag = math.hypot(dx, dy) or 1
-        ox = x + (dx / mag) * 12
-        oy = y + (dy / mag) * 12
+            # Offset slightly outward
+            dx = x - cx
+            dy = y - cy
+            mag = math.hypot(dx, dy) or 1
+            ox = x + (dx / mag) * 12
+            oy = y + (dy / mag) * 12
 
-        bbox = font.getbbox(glyph)
-        w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            bbox = font.getbbox(glyph)
+            w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-        # Bright above, dim below
-        if entry in above:
-            color = COLOR_PALLET.get(sign, (200, 200, 255, 240))
-        else:
-            color = tuple(int(c * 0.4) for c in COLOR_PALLET.get(sign, (200, 200, 255, 240)))
+            # Bright above, dim below
+            if 90 < lon < 270:
+                color = COLOR_PALLET.get(sign, (200, 200, 255, 240))
+            else:
+                color = tuple(int(c * 0.4) for c in COLOR_PALLET.get(sign, (200, 200, 255, 240)))
 
-        # Create glyph image
-        glyph_img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-        glyph_draw = ImageDraw.Draw(glyph_img)
+            # Create glyph image
+            glyph_img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+            glyph_draw = ImageDraw.Draw(glyph_img)
 
-        bbox = font.getbbox(glyph)
-        gw, gh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            bbox = font.getbbox(glyph)
+            gw, gh = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-        glyph_draw.text(
-            ((64 - gw) / 2, (64 - gh) / 2),
-            glyph,
-            font=font,
-            fill=color
-        )
+            glyph_draw.text(
+                ((64 - gw) / 2, (64 - gh) / 2),
+                glyph,
+                font=font,
+                fill=color
+            )
 
-        # 🧭 Rotation angle (THIS is the magic)
-        angle = math.degrees(theta)
+            # 🧭 Rotation angle (THIS is the magic)
+            angle = -math.degrees(theta)
 
 
 
-        # Optional: slight outward tilt (inscription like)
-        #angle -= 90
+            # Optional: slight outward tilt (inscription like)
+            angle -= 180
 
-        # Optional: keep text upright-ish (less chaos)
-        #if 90 < angle % 360 < 270:
-        #    angle += 180
+            # Optional: keep text upright-ish (less chaos)
+            #if 90 < angle % 360 < 270:
+            #    angle += 180
 
-        # Rotate
-        glyph_img = glyph_img.rotate(angle, resample=Image.BICUBIC, expand=True)
+            # Rotate
+            glyph_img = glyph_img.rotate(angle, resample=Image.BICUBIC, expand=True)
 
-        # Paste centered at (ox, oy)
-        gw2, gh2 = glyph_img.size
-        px = ox - gw2 / 2
-        py = oy - gh2 / 2
+            # Paste centered at (ox, oy)
+            gw2, gh2 = glyph_img.size
+            px = ox - gw2 / 2
+            py = oy - gh2 / 2
 
-        img.paste(glyph_img, (int(px), int(py)), glyph_img)
+            img.paste(glyph_img, (int(px), int(py)), glyph_img)
+            lon += 30
+    except Exception as e:
+        print(e)  
     # 🌳 Tree (axis)
     try:
         if not floor.current_phase:
@@ -427,25 +436,19 @@ def tf_sigil(floor, size=400):
                 size=size
             )
 
-            # 🌞 Shadow using floor.observe()
-            beam = floor.observe()
-            sun = beam.get("sun")
 
-            if sun:
-                alt = sun["alt_apparent"]
-                az  = sun["azimuth"]
-                if alt > 0 and 90 < az < 270: # Over the horizon and projecting downwards
-                ## TOO HEAVY
-                #if alt > floor.sun_delay().get("angle") and 90 < az < 270: # Over the horizon and projecting downwards 
-                    overlay_shadow_tree(
-                        img,
-                        rune=dark_rune,
-                        cx=cx,
-                        cy=cy,
-                        azimuth=az,
-                        altitude=alt,
-                        size=size
-                    )
+            if alt > 0 and 90 < az < 270: # Over the horizon and projecting downwards
+            ## TOO HEAVY
+            #if alt > floor.sun_delay().get("angle") and 90 < az < 270: # Over the horizon and projecting downwards 
+                overlay_shadow_tree(
+                    img,
+                    rune=dark_rune,
+                    cx=cx,
+                    cy=cy,
+                    azimuth=az,
+                    altitude=alt,
+                    size=size
+                )
     except Exception as e:
         pass
     # Outer ring
