@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: thresholdfloor
-Version: 0.2.9
+Version: 0.3.0
 Summary: A floor below for tuning to what's above
 Author: WitchMithras
 License: Proprietary (staging)
@@ -198,6 +198,10 @@ A shadow-based phase derived from solar geometry.
 ---
 
 ### Sigil
+
+<p align="center">
+  <img src="docs/images/sigil_example.png" width="400"/>
+</p>
 
 ```python
 tfloor.sigil()
