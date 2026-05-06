@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 
 from aetherfield import AetherField
 from .aether_thresher import (
+    load_aether_field,
     solar_declination as _solar_declination,
     sunrise_azimuth as _sunrise_azimuth,
     determine_solar_movement as _determine_solar_movement,
@@ -346,7 +347,7 @@ class ThresholdFloor:
         self.latitude = latitude
         self.longitude = longitude
         self.tz = tz
-        self.af = AetherField.load_calibration(calibration)
+        self.af = load_aether_field(calibration)
         self.pegs = self.compute_pegs()
         # Scan for horizon elevation using SRTM
         self.horizon = {}

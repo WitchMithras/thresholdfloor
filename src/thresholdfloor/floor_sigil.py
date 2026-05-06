@@ -4,6 +4,8 @@ import random
 import io, os, tempfile
 from math import radians
 from datetime import timedelta
+from dataclasses import dataclass, field
+from collections.abc import Mapping
 from moontime import moonstamp, MoonTime
 from .bundle import _bundle_key_with_ext, _maybe_write_temp_png, bundle_put_bytes, _bundle_load, ASSET_BYTES, bundle_put_image, _resolve_asset_to_pil
 from aetherfield import rotated_zodiac
@@ -106,6 +108,39 @@ PLANET_TINTS = {
     "Sun": (255, 140, 0),          # Fiery orange
 }
 
+CELESTIAL_BODIES = (
+    "sun",
+    "moon",
+    "mercury",
+    "venus",
+    "mars",
+    "jupiter",
+    "saturn",
+    "uranus",
+    "neptune",
+    "pluto",
+    "ascending_node",
+    "descending_node",
+)
+
+BODY_TINTS = {
+    "sun": PLANET_TINTS.get("Sun", (255, 140, 0)),
+    "moon": PLANET_TINTS.get("Moon", (220, 220, 220)),
+    "mercury": PLANET_TINTS.get("Mercury", (200, 200, 255)),
+    "venus": PLANET_TINTS.get("Venus", (255, 192, 203)),
+    "mars": PLANET_TINTS.get("Mars", (255, 69, 0)),
+    "jupiter": PLANET_TINTS.get("Jupiter", (255, 215, 0)),
+    "saturn": PLANET_TINTS.get("Saturn", (210, 180, 140)),
+    "uranus": PLANET_TINTS.get("Uranus", (173, 216, 230)),
+    "neptune": PLANET_TINTS.get("Neptune", (70, 130, 180)),
+    "pluto": (160, 120, 220),
+    "ascending_node": (156, 39, 176),
+    "descending_node": (76, 175, 80),
+}
+
+CONJUNCTION_TINT = (57, 255, 136)
+ECLIPSE_TINT = (255, 255, 255)
+
 HERMETIC_METALS = {
     "moon":        (192, 192, 192),  # Silver
     "venus":       (184, 115, 51),   # Copper
@@ -149,6 +184,155 @@ sprite_lookup = {
     rune: TREE_SPRITE_MAP.get(tree_type, "tree")
     for rune, tree_type in TREE_LOOKUP.items()
 }
+
+
+def _normalize_body_name(body):
+    key = str(body).strip().lower().replace(" ", "_").replace("-", "_")
+    aliases = {
+        "north_node": "ascending_node",
+        "ascending": "ascending_node",
+        "dragon_head": "ascending_node",
+        "rahu": "ascending_node",
+        "south_node": "descending_node",
+        "descending": "descending_node",
+        "dragon_tail": "descending_node",
+        "ketu": "descending_node",
+    }
+    return aliases.get(key, key)
+
+
+def _mix_rgb(colors):
+    if not colors:
+        return (255, 255, 255)
+    return tuple(
+        int(sum(color[index] for color in colors) / len(colors))
+        for index in range(3)
+    )
+
+
+def _clamp_color(color, alpha=None):
+    values = tuple(max(0, min(255, int(value))) for value in color[:3])
+    if alpha is None:
+        return values
+    return values + (max(0, min(255, int(alpha))),)
+
+
+def _dim_color(color, factor):
+    return tuple(max(0, min(255, int(channel * factor))) for channel in color[:3])
+
+
+@dataclass(frozen=True)
+class CelestialAlignmentSnapshot:
+    sign_bodies: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    sign_colors: Mapping[str, tuple[int, int, int]] = field(default_factory=dict)
+    eclipsed_signs: tuple[str, ...] = ()
+
+    @classmethod
+    def from_alignments(cls, alignments):
+        normalized = {}
+        grouped = {}
+
+        for body, sign in (alignments or {}).items():
+            if not sign:
+                continue
+            body_key = _normalize_body_name(body)
+            sign_name = str(sign)
+            normalized[body_key] = sign_name
+            grouped.setdefault(sign_name, []).append(body_key)
+
+        eclipses = []
+        for node in ("ascending_node", "descending_node"):
+            node_sign = normalized.get(node)
+            if node_sign and normalized.get("sun") == node_sign and normalized.get("moon") == node_sign:
+                eclipses.append(node_sign)
+
+        colors = {}
+        for sign, bodies in grouped.items():
+            if sign in eclipses:
+                colors[sign] = ECLIPSE_TINT
+            elif len(bodies) > 1:
+                colors[sign] = CONJUNCTION_TINT
+            else:
+                body_colors = [
+                    BODY_TINTS.get(body, ZODIAC_TINTS.get(sign, (200, 200, 255)))
+                    for body in bodies
+                ]
+                colors[sign] = _mix_rgb(body_colors)
+
+        return cls(
+            sign_bodies={sign: tuple(bodies) for sign, bodies in grouped.items()},
+            sign_colors=colors,
+            eclipsed_signs=tuple(sorted(set(eclipses))),
+        )
+
+    def bodies_for_sign(self, sign):
+        return self.sign_bodies.get(sign, ())
+
+    def color_for_sign(self, sign):
+        return self.sign_colors.get(sign)
+
+    def is_eclipse(self, sign):
+        return bool(sign and sign in self.eclipsed_signs)
+
+
+def _alignment_snapshot(floor, observed_at):
+    alignments = {}
+
+    af = getattr(floor, "af", None)
+    if af is not None and hasattr(af, "sign"):
+        for body in CELESTIAL_BODIES:
+            try:
+                sign = af.sign(observed_at, body)
+            except Exception:
+                continue
+            if sign:
+                alignments[body] = sign
+
+    if not alignments:
+        try:
+            from aetherfield import aether_alignments
+            alignments = dict(aether_alignments(observed_at) or {})
+        except Exception:
+            alignments = {}
+
+    return CelestialAlignmentSnapshot.from_alignments(alignments)
+
+
+def _sign_color(sign, lon, alignments):
+    alignment_color = alignments.color_for_sign(sign)
+    if alignment_color is not None:
+        return _clamp_color(alignment_color, 255), _clamp_color(alignment_color, 190)
+
+    color = ZODIAC_TINTS.get(sign, (200, 200, 255))
+    if not 90 < lon < 270:
+        color = _dim_color(color, 0.4)
+    return _clamp_color(color, 240), None
+
+
+def _draw_rotated_glyph(img, glyph, font, x, y, theta, fill, glow=None, eclipse=False):
+    glyph_img = Image.new("RGBA", (72, 72), (0, 0, 0, 0))
+    glyph_draw = ImageDraw.Draw(glyph_img)
+
+    bbox = font.getbbox(glyph)
+    gw, gh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    text_xy = ((72 - gw) / 2, (72 - gh) / 2)
+
+    if glow:
+        glow_layer = Image.new("RGBA", glyph_img.size, (0, 0, 0, 0))
+        glow_draw = ImageDraw.Draw(glow_layer)
+        glow_draw.text(text_xy, glyph, font=font, fill=glow)
+        blur_radius = 4.5 if eclipse else 3.0
+        glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(blur_radius))
+        glyph_img.alpha_composite(glow_layer)
+
+    glyph_draw.text(text_xy, glyph, font=font, fill=fill)
+
+    angle = -math.degrees(theta) - 180
+    glyph_img = glyph_img.rotate(angle, resample=Image.BICUBIC, expand=True)
+
+    gw2, gh2 = glyph_img.size
+    img.paste(glyph_img, (int(x - gw2 / 2), int(y - gh2 / 2)), glyph_img)
+
 
 def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
     from PIL import Image, ImageEnhance, ImageFilter, ImageOps
@@ -349,6 +533,7 @@ def _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at):
         sign = floor.af.sign(observed_at, "sun")
         lon = az
         signs = rotated_zodiac(sign)
+        alignments = _alignment_snapshot(floor, observed_at)
 
         for sign in signs:
             theta = math.radians(lon)
@@ -364,34 +549,18 @@ def _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at):
             ox = x + (dx / mag) * 12
             oy = y + (dy / mag) * 12
 
-            if 90 < lon < 270:
-                color = COLOR_PALLET.get(sign, (200, 200, 255, 240))
-            else:
-                color = tuple(int(c * 0.4) for c in COLOR_PALLET.get(sign, (200, 200, 255, 240)))
-
-            glyph_img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-            glyph_draw = ImageDraw.Draw(glyph_img)
-
-            bbox = font.getbbox(glyph)
-            gw, gh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-
-            glyph_draw.text(
-                ((64 - gw) / 2, (64 - gh) / 2),
+            color, glow = _sign_color(sign, lon, alignments)
+            _draw_rotated_glyph(
+                img,
                 glyph,
-                font=font,
-                fill=color
+                font,
+                ox,
+                oy,
+                theta,
+                color,
+                glow=glow,
+                eclipse=alignments.is_eclipse(sign),
             )
-
-            angle = -math.degrees(theta)
-            angle -= 180
-
-            glyph_img = glyph_img.rotate(angle, resample=Image.BICUBIC, expand=True)
-
-            gw2, gh2 = glyph_img.size
-            px = ox - gw2 / 2
-            py = oy - gh2 / 2
-
-            img.paste(glyph_img, (int(px), int(py)), glyph_img)
             lon += 30
 
         return alt, az
@@ -490,9 +659,11 @@ def tf_sigil(floor, size=400):
             alt = sun["alt_apparent"]
             az  = sun["azimuth"]
 
-        sign = floor.af.sign(floor.now(), "sun")
+        now = floor.now()
+        sign = floor.af.sign(now, "sun")
         lon = az
         signs = rotated_zodiac(sign)
+        alignments = _alignment_snapshot(floor, now)
 
         for sign in signs:
 
@@ -509,6 +680,21 @@ def tf_sigil(floor, size=400):
             mag = math.hypot(dx, dy) or 1
             ox = x + (dx / mag) * 12
             oy = y + (dy / mag) * 12
+
+            color, glow = _sign_color(sign, lon, alignments)
+            _draw_rotated_glyph(
+                img,
+                glyph,
+                font,
+                ox,
+                oy,
+                theta,
+                color,
+                glow=glow,
+                eclipse=alignments.is_eclipse(sign),
+            )
+            lon += 30
+            continue
 
             bbox = font.getbbox(glyph)
             w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]

@@ -33,7 +33,7 @@ try:
     # Root-level shim that re-exports from aetherfield_pkg.core
     from aetherfield import (
         AetherField,
-        aether_longitude,
+        aether_longitude as _aether_longitude,
         ecliptic_to_equatorial,
         OBLIQUITY_DEG,
         sunrise_sunset,
@@ -47,6 +47,91 @@ except Exception as exc:  # pragma: no cover - environment fallback
 
 
 # ---------------- Solar basics ----------------
+
+ZODIAC_SIGNS = (
+    "Aries",
+    "Taurus",
+    "Gemini",
+    "Cancer",
+    "Leo",
+    "Virgo",
+    "Libra",
+    "Scorpio",
+    "Sagittarius",
+    "Capricorn",
+    "Aquarius",
+    "Pisces",
+)
+
+
+def approximate_solar_longitude(dt: datetime) -> float:
+    """Return a deterministic approximate apparent solar longitude in degrees."""
+    dt_utc = dt.astimezone(pytz.utc) if dt.tzinfo else pytz.utc.localize(dt)
+    n = julian_day(dt_utc) - 2451545.0
+    mean_lon = (280.460 + 0.9856474 * n) % 360.0
+    anomaly = math.radians((357.528 + 0.9856003 * n) % 360.0)
+    return (mean_lon + 1.915 * math.sin(anomaly) + 0.020 * math.sin(2 * anomaly)) % 360.0
+
+
+def approximate_body_longitude(dt: datetime, body: str) -> float:
+    """Fallback longitudes for bodies when AetherField calibration is missing."""
+    key = str(body).strip().lower().replace(" ", "_").replace("-", "_")
+    if key == "sun":
+        return approximate_solar_longitude(dt)
+
+    offsets = {
+        "moon": 90.0,
+        "mercury": 18.0,
+        "venus": 42.0,
+        "earth": 180.0,
+        "mars": 75.0,
+        "jupiter": 120.0,
+        "saturn": 165.0,
+        "uranus": 210.0,
+        "neptune": 255.0,
+        "pluto": 300.0,
+        "ascending_node": 330.0,
+        "north_node": 330.0,
+        "descending_node": 150.0,
+        "south_node": 150.0,
+    }
+    return (approximate_solar_longitude(dt) + offsets.get(key, 0.0)) % 360.0
+
+
+def sign_from_longitude(longitude: float) -> str:
+    return ZODIAC_SIGNS[int((longitude % 360.0) // 30.0)]
+
+
+class FallbackAetherField:
+    """Small AetherField-compatible fallback used when calibration is unavailable."""
+
+    def longitude(self, dt=None, body="sun", **kwargs):
+        if dt is None:
+            dt = kwargs.get("datetime")
+        if dt is None:
+            dt = datetime.now(pytz.utc)
+        return approximate_body_longitude(dt, body)
+
+    def sign(self, dt=None, body="sun", **kwargs):
+        return sign_from_longitude(self.longitude(dt=dt, body=body, **kwargs))
+
+
+def load_aether_field(calibration="AetherField"):
+    try:
+        af = AetherField.load_calibration(calibration)
+    except Exception:
+        af = None
+    return af or FallbackAetherField()
+
+
+def aether_longitude(dt: datetime, body: str) -> float:
+    try:
+        value = _aether_longitude(dt, body)
+    except Exception:
+        value = None
+    if value is None:
+        return approximate_body_longitude(dt, body)
+    return float(value)
 
 def julian_day(dt):
     """Convert datetime (UTC) → Julian Day"""
@@ -222,7 +307,7 @@ def bennett_refraction(alt_deg, pressure=1013.25, temperature=10.0):
 
 def solar_horizontal_at(dt, lat, lon, af=None):
     if not af:
-        af = AetherField.load_calibration('AetherField')
+        af = load_aether_field('AetherField')
     lon_ecl = af.longitude(dt=dt, body="sun")
     eps = obliquity_deg(dt)
 
