@@ -701,6 +701,8 @@ def animate_sigil(canvas, base_image_path, duration=4, floor=None, frame_count=2
         for i in range(frame_count):
             observed_at = start + (tick * i)
             frame = _render_clock_sigil_frame(floor, observed_at, size=512)
+            #frames.append(frame.copy())
+
             frames.append(glow_layer(frame.copy(), passes=1))
     else:
         # Build animation frames
@@ -788,6 +790,7 @@ def add_static_overlay(img):
     """Overlay white noise dots onto an image."""
     draw = ImageDraw.Draw(img)
     w, h = img.size
+    h = h / 2 # Half height (they look like stars..)
     for _ in range(random.randint(500, 1000)):
         x = random.randint(0, w - 1)
         y = random.randint(0, h - 1)
