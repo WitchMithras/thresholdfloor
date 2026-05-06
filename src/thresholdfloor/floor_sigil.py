@@ -364,10 +364,14 @@ def _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at):
             ox = x + (dx / mag) * 12
             oy = y + (dy / mag) * 12
 
-            if 90 < lon < 270:
-                color = COLOR_PALLET.get(sign, (200, 200, 255, 240))
-            else:
-                color = tuple(int(c * 0.4) for c in COLOR_PALLET.get(sign, (200, 200, 255, 240)))
+            # Above horizon bright
+            #if 90 < lon < 270:
+                #color = COLOR_PALLET.get(sign, (200, 200, 255, 240))
+            #else:
+                #color = tuple(int(c * 0.4) for c in COLOR_PALLET.get(sign, (200, 200, 255, 240)))
+            
+            # All bright    
+            color = COLOR_PALLET.get(sign, (200, 200, 255, 240))
 
             glyph_img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
             glyph_draw = ImageDraw.Draw(glyph_img)
