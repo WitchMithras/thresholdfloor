@@ -196,7 +196,7 @@ This is an evolving feature and may expand in future releases.
 
 ```python
 tfloor.as_above()
-tfloor.as_below()
+tfloor.so_below()
 ```
 
 Maps zodiac regions relative to the local horizon.
