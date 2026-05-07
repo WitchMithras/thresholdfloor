@@ -17,10 +17,60 @@ try:
 except Exception:
     pass
 try:
-    from PIL import Image, ImageChops, ImageOps, ImageFilter, ImageDraw, ImageFont, ImageTk, ImageEnhance
+    from PIL import Image, ImageChops, ImageOps, ImageFilter, ImageDraw, ImageFont, ImageTk, ImageEnhance, ImageColor
     PIL_EXISTS = True
 except Exception:
     pass
+
+DEFAULT_OUTER_RING_COLOR = (180, 150, 255, 180)
+PHASE_COLOR_RGBA = {
+    "black": (0, 0, 0, 180),
+    "white": (255, 255, 255, 180),
+    "yellow-gold": (255, 205, 64, 180),
+    "crimson-red": (190, 24, 55, 180),
+}
+
+
+def _coerce_ring_color(color, default=DEFAULT_OUTER_RING_COLOR):
+    if isinstance(color, str):
+        keyed = color.strip().lower().replace("_", "-").replace(" ", "-")
+        if keyed in PHASE_COLOR_RGBA:
+            return PHASE_COLOR_RGBA[keyed]
+
+        image_color = globals().get("ImageColor")
+        if image_color is not None:
+            try:
+                r, g, b = image_color.getrgb(color)
+                return (r, g, b, default[3])
+            except ValueError:
+                return default
+
+    if isinstance(color, (tuple, list)) and len(color) in (3, 4):
+        values = tuple(int(c) for c in color)
+        if len(values) == 3:
+            return (*values, default[3])
+        return values
+
+    return default
+
+
+def _phase_outer_ring_color(floor, default=DEFAULT_OUTER_RING_COLOR):
+    phase = getattr(floor, "current_phase", None)
+    if not phase and hasattr(floor, "get_phase"):
+        try:
+            phase = floor.get_phase()
+        except Exception:
+            phase = None
+
+    if not phase:
+        return default
+
+    try:
+        from .threshold_floor import COLORS
+    except Exception:
+        COLORS = {}
+
+    return _coerce_ring_color(COLORS.get(phase), default)
 
 SIGNS = {
     '♈': 'Aries',
@@ -601,11 +651,11 @@ def tf_sigil(floor, size=400):
     except Exception as e:
         pass
     # Outer ring
-    #draw.ellipse(
-    #    (cx - r, cy - r, cx + r, cy + r),
-    #    outline=(180, 150, 255, 180),
-    #    width=3
-    #)
+    draw.ellipse(
+        (cx - r, cy - r, cx + r, cy + r),
+        outline=_phase_outer_ring_color(floor),
+        width=3
+    )
         # Save final emotional disaster
     full_path = f"heather_sigils/tf_sig_{moonstamp()}.png"
 
