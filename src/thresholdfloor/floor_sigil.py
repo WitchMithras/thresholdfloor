@@ -188,63 +188,66 @@ def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
 
     # 🌫 Optional blur
     sprite = sprite.filter(ImageFilter.GaussianBlur(1.1))
+    if altitude is not None and azimuth is not None and altitude > 0 and 90 < azimuth < 270:
+        # 🌞 Clamp altitude
+        alt = max(altitude, 2)
+        alt_rad = math.radians(alt)
 
-    # 🌞 Clamp altitude
-    alt = max(altitude, 2)
-    alt_rad = math.radians(alt)
+        # angle difference from the "broadside" shadow direction (180° in your case)
+        delta = abs((azimuth - 180 + 180) % 360 - 180)
 
-    # angle difference from the "broadside" shadow direction (180° in your case)
-    delta = abs((azimuth - 180 + 180) % 360 - 180)
+        # cosine falloff (0° = full width, 90° = very thin)
+        falloff = abs(math.cos(math.radians(delta)))
 
-    # cosine falloff (0° = full width, 90° = very thin)
-    falloff = abs(math.cos(math.radians(delta)))
+        # soften it so it doesn’t collapse too fast
+        falloff = falloff ** 1.5   # tweak 1.2–2.5
 
-    # soften it so it doesn’t collapse too fast
-    falloff = falloff ** 1.5   # tweak 1.2–2.5
+        # clamp to your minimum thickness
+        min_scale = 0.09
+        scale = min_scale + (1 - min_scale) * falloff
 
-    # clamp to your minimum thickness
-    min_scale = 0.09
-    scale = min_scale + (1 - min_scale) * falloff
+        new_w = int(size * scale)
+          # 🌿 Stretch length based on altitude (LOW sun = LONG shadow)
+        stretch = min(6.0, 1 / math.tan(alt_rad))
 
-    new_w = int(size * scale)
-      # 🌿 Stretch length based on altitude (LOW sun = LONG shadow)
-    stretch = min(6.0, 1 / math.tan(alt_rad))
+        inc = size * stretch
+        new_h = int(size + inc)  # flatten vertically
+        sprite_offset = -90
+        sprite = sprite.resize((new_w, new_h), Image.LANCZOS)
 
-    inc = size * stretch
-    new_h = int(size + inc)  # flatten vertically
-    sprite_offset = -90
-    sprite = sprite.resize((new_w, new_h), Image.LANCZOS)
+        # 🧭 Rotate so it lays away from sun
+        angle = (azimuth - 90) % 360
+        diff = 0
+        if azimuth > 180: 
+            diff = (azimuth - 180)
+            angle = (180 - diff)
+        elif azimuth < 180: 
+            diff = (180 - azimuth)
+            angle = (180 + diff)
 
-    # 🧭 Rotate so it lays away from sun
-    angle = (azimuth - 90) % 360
-    diff = 0
-    if azimuth > 180: 
-        diff = (azimuth - 180)
-        angle = (180 - diff)
-    elif azimuth < 180: 
-        diff = (180 - azimuth)
-        angle = (180 + diff)
+        sprite = sprite.rotate(angle, resample=Image.BICUBIC, expand=True)
 
-    sprite = sprite.rotate(angle, resample=Image.BICUBIC, expand=True)
+        # 🎯 Anchor correction (THIS is the magic)
+        w, h = sprite.size
 
-    # 🎯 Anchor correction (THIS is the magic)
-    w, h = sprite.size
+        # We want the "base" of the tree to stay at (cx, cy)
+        # After rotation, base ≈ center-bottom of the image
+        if azimuth >= 180:
 
-    # We want the "base" of the tree to stay at (cx, cy)
-    # After rotation, base ≈ center-bottom of the image
-    if azimuth >= 180:
+            x = cx - w * min(1, diff // 20)
 
-        x = cx - w * min(1, diff // 20)
+            #y = cy
 
-        #y = cy
+        else:
+            x = cx
 
+            #y = cy - w
+        #x = cx
+
+        y = cy
     else:
+        y = cy
         x = cx
-
-        #y = cy - w
-    #x = cx
-
-    y = cy
 
 
     base_img.paste(sprite, (int(x), int(y)), sprite)
@@ -405,16 +408,16 @@ def _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at):
 
 
 def _draw_sigil_shadow(img, cx, cy, alt, az, size=82):
-    if alt is not None and az is not None and alt > 0 and 90 < az < 270:
-        overlay_shadow_tree(
-            img,
-            rune="\u16c7",
-            cx=cx,
-            cy=cy,
-            azimuth=az,
-            altitude=alt,
-            size=size
-        )
+    #if alt is not None and az is not None and alt > 0 and 90 < az < 270:
+    overlay_shadow_tree(
+        img,
+        rune="\u16c7",
+        cx=cx,
+        cy=cy,
+        azimuth=az,
+        altitude=alt,
+        size=size
+    )
     return img
 
 
@@ -586,18 +589,18 @@ def tf_sigil(floor, size=400):
             )
 
 
-            if alt > 0 and 90 < az < 270: # Over the horizon and projecting downwards
+            #if alt > 0 and 90 < az < 270: # Over the horizon and projecting downwards
             ## TOO HEAVY
             #if alt > floor.sun_delay().get("angle") and 90 < az < 270: # Over the horizon and projecting downwards 
-                overlay_shadow_tree(
-                    img,
-                    rune=dark_rune,
-                    cx=cx,
-                    cy=cy,
-                    azimuth=az,
-                    altitude=alt,
-                    size=size
-                )
+            overlay_shadow_tree(
+                img,
+                rune=dark_rune,
+                cx=cx,
+                cy=cy,
+                azimuth=az,
+                altitude=alt,
+                size=size
+            )
     except Exception as e:
         pass
     # Outer ring
