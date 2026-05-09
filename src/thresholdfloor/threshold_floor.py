@@ -514,18 +514,18 @@ class ThresholdFloor:
         """
         shadow = self.simulate_shadow(timestamp=timestamp)
         if shadow is None:
-            return None
+            return "Sine sole sileo"
 
         az = getattr(shadow, "shadow_azimuth_deg", None)
         if az is None:
-            return None
+            return "Sine sole sileo"
 
         az = float(az) % 360.0
         if 20.0 <= az <= 160.0:
             return "Take your time."
         if 200.0 <= az <= 350.0:
             return "It's later than you think."
-        return None
+        return "Sine sole sileo"
 
     def add_shadow_mark_from_simulation(
         self,

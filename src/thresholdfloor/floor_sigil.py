@@ -442,6 +442,75 @@ def _draw_sigil_shadow(img, cx, cy, alt, az, size=82):
         )
     return img
 
+def _polar(cx, cy, radius, angle_deg):
+    theta = math.radians(angle_deg)
+    return (
+        cx + radius * -math.sin(theta),
+        cy + radius * math.cos(theta),
+    )
+
+
+def _draw_sigil_ticks(img, cx, cy, r, every=5, major_every=30):
+    draw = ImageDraw.Draw(img)
+
+    outer = r * 1.33
+    minor_len = r * 0.025
+    major_len = r * 0.055
+
+    for deg in range(0, 360, every):
+        is_major = deg % major_every == 0
+        length = major_len if is_major else minor_len
+        width = 2 if is_major else 1
+
+        x1, y1 = _polar(cx, cy, outer - length, deg)
+        x2, y2 = _polar(cx, cy, outer, deg)
+
+        draw.line(
+            (x1, y1, x2, y2),
+            fill=(150, 115, 70, 150),
+            width=width,
+        )
+
+    return img
+
+
+def _draw_diamond(img, cx, cy, radius, angle_deg, scale=4, fill=(210, 165, 90, 210)):
+    draw = ImageDraw.Draw(img)
+    x, y = _polar(cx, cy, radius, angle_deg)
+
+    pts = [
+        (x, y - scale),
+        (x + scale, y),
+        (x, y + scale),
+        (x - scale, y),
+    ]
+
+    draw.line(pts + [pts[0]], fill=fill, width=1)
+    return img
+
+
+def _draw_motto_brackets(img, cx, cy, r):
+    ornament_r = r * 0.84
+
+    # Bracket ornaments around TEMPUS FUGIT
+    _draw_diamond(img, cx, cy, ornament_r, 20, scale=3)
+    _draw_diamond(img, cx, cy, ornament_r, 70, scale=3)
+
+    # Bracket ornaments around FESTINA LENTE
+    _draw_diamond(img, cx, cy, ornament_r, 290, scale=3)
+    _draw_diamond(img, cx, cy, ornament_r, 340, scale=3)
+
+    # Small keel mark at bottom center
+    _draw_diamond(img, cx, cy, ornament_r, 0, scale=4)
+
+    return img
+
+
+def _draw_sigil_ornaments(img, cx, cy, size, r):
+    _draw_sigil_ticks(img, cx, cy, r)
+    _draw_motto_brackets(img, cx, cy, r)
+    return img
+
 def _draw_curved_text(
     img,
     cx,
@@ -548,7 +617,8 @@ def _draw_sigil_inscribe(img, cx, cy, size, r):
         motto_r = r * 0.72
         tracking_deg=1.8
         latin_take = "FESTINA LENTE"
-        latin_late = "SERIUS EST"
+        latin_late = "TEMPUS FUGIT"
+        #latin_late = "SERIUS EST"
         # Bottom-right-ish
         _draw_curved_text(
             img,
@@ -595,6 +665,7 @@ def _render_clock_sigil_frame(floor, observed_at, size=512):
         _draw_sigil_tree_axis(img, cx, cy, size=tree_size)
         font = _load_sigil_font(max(1, int(size * (36 / 400))))
         r = int((size // 2) * 0.75)
+        _draw_sigil_ornaments(img, cx, cy, size, r)
         alt, az = _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at)
 
         _draw_sigil_shadow(img, cx, cy, alt, az, size=tree_size)
