@@ -667,8 +667,14 @@ def _draw_sigil_inscribe(img, cx, cy, size, r):
         print(e)
         return img
 
+def _draw_vestal_ring(img, cx, cy, phase, r, color=(180, 150, 255, 180), width=3):
+    draw.ellipse(
+        (cx - r, cy - r, cx + r, cy + r),
+        outline=color,
+        width=width
+    )
 
-def _render_clock_sigil_frame(floor, observed_at, size=512):
+def _render_clock_sigil_frame(floor, observed_at, size=512, ornaments=True, inscription=True, glyph=True, tree=True, shadow=True, vestal=False):
     try:
         img = _draw_sigil_background(size)
         cx, cy = size // 2, size // 2
@@ -676,13 +682,23 @@ def _render_clock_sigil_frame(floor, observed_at, size=512):
         _draw_sigil_tree_axis(img, cx, cy, size=tree_size)
         font = _load_sigil_font(max(1, int(size * (36 / 400))))
         r = int((size // 2) * 0.75)
-        _draw_sigil_ornaments(img, cx, cy, size, r)
+        if ornaments:
+            _draw_sigil_ornaments(img, cx, cy, size, r)
         alt, az = _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at)
-
-        _draw_sigil_shadow(img, cx, cy, alt, az, size=tree_size)
-
-        _draw_sigil_inscribe(img, cx, cy, size=size, r=r)
-
+        if shadow:
+            _draw_sigil_shadow(img, cx, cy, alt, az, size=tree_size)
+        if inscription:
+            _draw_sigil_inscribe(img, cx, cy, size=size, r=r)
+        if vestal:
+            mt = floor.now_mt()
+            moon_phase_fraction = mt.moon_illum / 100
+            def _draw_vestal_ring(
+                img,
+                cx,
+                cy,
+                radius=r * 1.08,
+                phase=moon_phase_fraction,
+            )
 
         return img
     except Exception as e:
