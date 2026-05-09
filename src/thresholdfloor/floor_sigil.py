@@ -17,7 +17,7 @@ try:
 except Exception:
     pass
 try:
-    from PIL import Image, ImageChops, ImageOps, ImageFilter, ImageDraw, ImageFont, ImageTk, ImageEnhance
+    from PIL import Image, ImageOps, ImageChops, ImageOps, ImageFilter, ImageDraw, ImageFont, ImageTk, ImageEnhance
     PIL_EXISTS = True
 except Exception:
     pass
@@ -151,7 +151,6 @@ sprite_lookup = {
 }
 
 def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
-    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
     import math
     #cx, cy = cx + size, cy + size
     sprite_key = sprite_lookup.get(rune)
@@ -285,6 +284,8 @@ def overlay_tree_sprite(base_img, rune, position=None, size=48):
     else:
         return base_img
 
+    sprite = ImageEnhance.Brightness(sprite).enhance(0.6)
+
     sprite = sprite.resize((size, size), Image.LANCZOS)
     if position is None:
         x = base_img.width - size - 10
@@ -396,7 +397,10 @@ def _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at):
                 #color = tuple(int(c * 0.4) for c in COLOR_PALLET.get(sign, (200, 200, 255, 240)))
             
             # All bright    
-            color = COLOR_PALLET.get(sign, (200, 200, 255, 240))
+            #color = COLOR_PALLET.get(sign, (200, 200, 255, 240))
+            
+            # All dark
+            color = tuple(int(c * 0.4) for c in COLOR_PALLET.get(sign, (200, 200, 255, 240)))
 
             glyph_img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
             glyph_draw = ImageDraw.Draw(glyph_img)
@@ -493,12 +497,12 @@ def _draw_motto_brackets(img, cx, cy, r):
     ornament_r = r * 0.84
 
     # Bracket ornaments around TEMPUS FUGIT
-    _draw_diamond(img, cx, cy, ornament_r, 20, scale=3)
-    _draw_diamond(img, cx, cy, ornament_r, 70, scale=3)
+    _draw_diamond(img, cx, cy, ornament_r, 38, scale=3)
+    _draw_diamond(img, cx, cy, ornament_r, 52, scale=3)
 
     # Bracket ornaments around FESTINA LENTE
-    _draw_diamond(img, cx, cy, ornament_r, 290, scale=3)
-    _draw_diamond(img, cx, cy, ornament_r, 340, scale=3)
+    _draw_diamond(img, cx, cy, ornament_r, 305, scale=3)
+    _draw_diamond(img, cx, cy, ornament_r, 320, scale=3)
 
     # Small keel mark at bottom center
     _draw_diamond(img, cx, cy, ornament_r, 0, scale=4)
@@ -600,11 +604,14 @@ def _draw_curved_text(
 
         # Your current setup seems to like this orientation.
         # If letters face inward/upside-down, set rotation_offset=180.
+        
         glyph = glyph.rotate(
             -angle_deg + rotation_offset,
             resample=Image.BICUBIC,
             expand=True,
         )
+        #if reverse:
+            #glyph = ImageOps.mirror(glyph)
 
         ww, hh = glyph.size
         img.alpha_composite(glyph, (int(x - ww / 2), int(y - hh / 2)))
@@ -616,8 +623,10 @@ def _draw_sigil_inscribe(img, cx, cy, size, r):
         motto_font = _load_motto_font(max(8, int(size * 12 / 400)))
         motto_r = r * 0.72
         tracking_deg=1.8
-        latin_take = "FESTINA LENTE"
-        latin_late = "TEMPUS FUGIT"
+        latin_take = "LENTE"
+        latin_late = "FESTINA"
+        #latin_take = "FESTINA LENTE"
+        #latin_late = "TEMPUS FUGIT"
         #latin_late = "SERIUS EST"
         # Bottom-right-ish
         _draw_curved_text(
@@ -633,6 +642,7 @@ def _draw_sigil_inscribe(img, cx, cy, size, r):
             stroke_fill=(20, 15, 10, 210),
             reverse=True,
             tracking_deg=tracking_deg,
+            rotation_offset=0
         )
         # Southwest
         _draw_curved_text(
@@ -648,6 +658,7 @@ def _draw_sigil_inscribe(img, cx, cy, size, r):
             stroke_fill=(20, 15, 10, 210),
             reverse=True,
             tracking_deg=tracking_deg,
+            rotation_offset=0
         )
 
         return img
@@ -805,47 +816,7 @@ def tf_sigil(floor, size=400):
 
             img.paste(glyph_img, (int(px), int(py)), glyph_img)
             lon += 30
-                # 🌙 Add Latin mottos inside the zodiac band
-        # 🌙 Big readable Latin mottos inside the zodiac band
-        try:
-            motto_font = _load_motto_font(max(14, int(size * 28 / 400)))
-            motto_r = r * 0.67
-            latin_take = "ACCIPE TEMPUS TUUM"
-            latin_late = "SERIUS EST QUAM COGITAS"
 
-            def _draw_motto(text, angle_deg):
-                theta_m = math.radians(angle_deg)
-
-                mx = cx + motto_r * -math.sin(theta_m)
-                my = cy + motto_r * math.cos(theta_m)
-
-                bb = motto_font.getbbox(text)
-                mw, mh = bb[2] - bb[0], bb[3] - bb[1]
-
-                # Simple shadow stroke so blind little society gremlins can see it
-                for ox, oy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
-                    draw.text(
-                        (mx - mw / 2 + ox, my - mh / 2 + oy),
-                        text,
-                        font=motto_font,
-                        fill=(20, 15, 10, 230),
-                    )
-
-                draw.text(
-                    (mx - mw / 2, my - mh / 2),
-                    text,
-                    font=motto_font,
-                    fill=(235, 205, 150, 255),
-                )
-
-            # Bottom-right-ish: Take your time
-            _draw_motto(latin_take, 315)
-
-            # Southwest in your reversed/south-facing setup
-            _draw_motto(latin_late, 45)
-
-        except Exception as e:
-            print(e) 
     except Exception as e:
         print(e)  
     # 🌳 Tree (axis)

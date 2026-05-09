@@ -493,7 +493,7 @@ class ThresholdFloor:
             max_length=getattr(self, "max_shadow_length", None),
         )
 
-    def shade_voice(self, timestamp: str | None = None) -> str:
+    def shade_voice(self, timestamp: str | None = None, prompt: str | None = None) -> str:
         """
         Return a simple textual cue based on the current shadow's azimuth.
 
@@ -514,18 +514,23 @@ class ThresholdFloor:
         """
         shadow = self.simulate_shadow(timestamp=timestamp)
         if shadow is None:
-            return "Sine sole sileo"
+            return "Si sol deficit, respicit me nemo." # If the sun is gone, nobody will look at me.
+
+        if prompt.lower() == "who are you?":
+            return "Umbra sumus." # I am shade
 
         az = getattr(shadow, "shadow_azimuth_deg", None)
         if az is None:
-            return "Sine sole sileo"
+            return "Utere, non numera" # Use the hours, do not count them.
 
         az = float(az) % 360.0
         if 20.0 <= az <= 160.0:
-            return "Take your time."
+            return "Carpe diem." # Sieze the day
         if 200.0 <= az <= 350.0:
-            return "It's later than you think."
-        return "Sine sole sileo"
+            return "Serius est quam cogitas." # It is later than you think.
+        if az > 350.0:
+            return "Mox nox." # Soon it is night.
+        return "Si sol deficit, respicit me nemo." # If the sun is gone, nobody will look at me
 
     def add_shadow_mark_from_simulation(
         self,
