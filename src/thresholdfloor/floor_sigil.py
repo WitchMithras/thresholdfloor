@@ -295,6 +295,31 @@ def overlay_tree_sprite(base_img, rune, position=None, size=48):
     base_img.paste(sprite, (int(x), int(y)), sprite)
     return base_img
 
+def _load_motto_font(font_size=24):
+    preferred_fonts = [
+        #"Hermissoul-Regular.ttf",
+        "CinzelDecorative-Regular.ttf",
+        "DejaVuSans.ttf",
+    ]
+
+    for font_path in preferred_fonts:
+        try:
+            _bundle_load()
+            _bytes = ASSET_BYTES.get(font_path)
+
+            if _bytes:
+                return ImageFont.truetype(io.BytesIO(_bytes), font_size)
+
+            with open(font_path, "rb") as f:
+                raw_bytes = f.read()
+
+            bundle_put_bytes(font_path, raw_bytes)
+            return ImageFont.truetype(io.BytesIO(raw_bytes), font_size)
+
+        except Exception:
+            continue
+
+    return ImageFont.load_default()
 
 def _load_sigil_font(font_size=36):
     font_path = "DejaVuSans.ttf"
@@ -417,20 +442,170 @@ def _draw_sigil_shadow(img, cx, cy, alt, az, size=82):
         )
     return img
 
+def _draw_curved_text(
+    img,
+    cx,
+    cy,
+    radius,
+    text,
+    center_angle,
+    font,
+    fill=(235, 205, 150, 235),
+    stroke_fill=(20, 15, 10, 210),
+    tracking_deg=2.0,
+    reverse=False,
+    rotation_offset=0,
+    glyph_box=96,
+):
+    """
+    Draw text along a circular arc with adjustable letter spacing.
 
-def _render_clock_sigil_frame(floor, observed_at, size=512):
-    img = _draw_sigil_background(size)
-    cx, cy = size // 2, size // 2
-    tree_size = max(1, int(size * (82 / 400)))
-    _draw_sigil_tree_axis(img, cx, cy, size=tree_size)
+    center_angle uses your south-facing clock convention:
+      0°   = bottom / south
+      90°  = left
+      180° = top
+      270° = right
 
-    font = _load_sigil_font(max(1, int(size * (36 / 400))))
-    r = int((size // 2) * 0.75)
-    alt, az = _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at)
-    _draw_sigil_shadow(img, cx, cy, alt, az, size=tree_size)
+    tracking_deg increases spacing between letters.
+    reverse flips word order if the text reads backward.
+    rotation_offset can be set to 180 if the letters face inward/upside down.
+    """
+    if not text:
+        return img
+
+    draw = ImageDraw.Draw(img)
+
+    chars = list(text[::-1] if reverse else text)
+
+    def _char_width(ch):
+        try:
+            return font.getlength(ch)
+        except Exception:
+            bb = font.getbbox(ch)
+            return bb[2] - bb[0]
+
+    # Convert approximate pixel width into degrees on this radius.
+    circumference = 2 * math.pi * radius
+    px_to_deg = 360.0 / circumference
+
+    widths_px = [_char_width(ch) for ch in chars]
+    widths_deg = [w * px_to_deg for w in widths_px]
+
+    total_arc = sum(widths_deg) + tracking_deg * max(0, len(chars) - 1)
+    cursor = center_angle - total_arc / 2
+
+    for ch, ch_arc in zip(chars, widths_deg):
+        angle_deg = cursor + ch_arc / 2
+        cursor += ch_arc + tracking_deg
+
+        theta = math.radians(angle_deg)
+
+        x = cx + radius * -math.sin(theta)
+        y = cy + radius * math.cos(theta)
+
+        glyph = Image.new("RGBA", (glyph_box, glyph_box), (0, 0, 0, 0))
+        gd = ImageDraw.Draw(glyph)
+
+        bb = font.getbbox(ch)
+        gw = bb[2] - bb[0]
+        gh = bb[3] - bb[1]
+
+        gx = (glyph_box - gw) / 2
+        gy = (glyph_box - gh) / 2
+
+        if stroke_fill:
+            for ox, oy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                gd.text(
+                    (gx + ox, gy + oy),
+                    ch,
+                    font=font,
+                    fill=stroke_fill,
+                )
+
+        gd.text(
+            (gx, gy),
+            ch,
+            font=font,
+            fill=fill,
+        )
+
+        # Your current setup seems to like this orientation.
+        # If letters face inward/upside-down, set rotation_offset=180.
+        glyph = glyph.rotate(
+            -angle_deg + rotation_offset,
+            resample=Image.BICUBIC,
+            expand=True,
+        )
+
+        ww, hh = glyph.size
+        img.alpha_composite(glyph, (int(x - ww / 2), int(y - hh / 2)))
 
     return img
 
+def _draw_sigil_inscribe(img, cx, cy, size, r):
+    try:
+        motto_font = _load_motto_font(max(8, int(size * 12 / 400)))
+        motto_r = r * 0.72
+        tracking_deg=1.8
+        latin_take = "FESTINA LENTE"
+        latin_late = "SERIUS EST"
+        # Bottom-right-ish
+        _draw_curved_text(
+            img,
+            cx,
+            cy,
+            motto_r,
+            latin_take,
+            center_angle=315,
+            #arc_degrees=42,
+            font=motto_font,
+            fill=(180, 150, 100, 220),
+            stroke_fill=(20, 15, 10, 210),
+            reverse=True,
+            tracking_deg=tracking_deg,
+        )
+        # Southwest
+        _draw_curved_text(
+            img,
+            cx,
+            cy,
+            motto_r,
+            latin_late,
+            center_angle=45,
+            #arc_degrees=34,
+            font=motto_font,
+            fill=(180, 150, 100, 220),
+            stroke_fill=(20, 15, 10, 210),
+            reverse=True,
+            tracking_deg=tracking_deg,
+        )
+
+        return img
+
+    except Exception as e:
+        print(e)
+        return img
+
+
+def _render_clock_sigil_frame(floor, observed_at, size=512):
+    try:
+        img = _draw_sigil_background(size)
+        cx, cy = size // 2, size // 2
+        tree_size = max(1, int(size * (82 / 400)))
+        _draw_sigil_tree_axis(img, cx, cy, size=tree_size)
+        font = _load_sigil_font(max(1, int(size * (36 / 400))))
+        r = int((size // 2) * 0.75)
+        alt, az = _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at)
+
+        _draw_sigil_shadow(img, cx, cy, alt, az, size=tree_size)
+
+        _draw_sigil_inscribe(img, cx, cy, size=size, r=r)
+
+
+        return img
+    except Exception as e:
+        print(e)
+        return img
 
 def _clock_frame_duration_seconds(start, frame_count, moontime_hours):
     try:
@@ -559,6 +734,47 @@ def tf_sigil(floor, size=400):
 
             img.paste(glyph_img, (int(px), int(py)), glyph_img)
             lon += 30
+                # 🌙 Add Latin mottos inside the zodiac band
+        # 🌙 Big readable Latin mottos inside the zodiac band
+        try:
+            motto_font = _load_motto_font(max(14, int(size * 28 / 400)))
+            motto_r = r * 0.67
+            latin_take = "ACCIPE TEMPUS TUUM"
+            latin_late = "SERIUS EST QUAM COGITAS"
+
+            def _draw_motto(text, angle_deg):
+                theta_m = math.radians(angle_deg)
+
+                mx = cx + motto_r * -math.sin(theta_m)
+                my = cy + motto_r * math.cos(theta_m)
+
+                bb = motto_font.getbbox(text)
+                mw, mh = bb[2] - bb[0], bb[3] - bb[1]
+
+                # Simple shadow stroke so blind little society gremlins can see it
+                for ox, oy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
+                    draw.text(
+                        (mx - mw / 2 + ox, my - mh / 2 + oy),
+                        text,
+                        font=motto_font,
+                        fill=(20, 15, 10, 230),
+                    )
+
+                draw.text(
+                    (mx - mw / 2, my - mh / 2),
+                    text,
+                    font=motto_font,
+                    fill=(235, 205, 150, 255),
+                )
+
+            # Bottom-right-ish: Take your time
+            _draw_motto(latin_take, 315)
+
+            # Southwest in your reversed/south-facing setup
+            _draw_motto(latin_late, 45)
+
+        except Exception as e:
+            print(e) 
     except Exception as e:
         print(e)  
     # 🌳 Tree (axis)

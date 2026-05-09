@@ -29,6 +29,12 @@ except ImportError:
     def load_dotenv(*args, **kwargs):
         return False
 
+try:
+    from .elevation import tel_finder
+except Exception:
+    def tel_finder(*args, **kwargs):
+        return []
+
 # Load environment variables
 load_dotenv()
 
@@ -804,6 +810,7 @@ __all__ = [
     "get_weather",
     "get_wind",
     "scan_horizon",
+    "tel_finder",
     "as_above",
     "so_below",
     "sigil",

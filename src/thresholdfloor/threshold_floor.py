@@ -15,6 +15,7 @@ import os
 import pytz
 import math
 import json
+from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
@@ -328,6 +329,24 @@ class ChthonicVault:
             return amount
         print("Not enough grain stored.")
 
+
+
+
+@dataclass
+class GatePeg:
+    index: int
+    azimuth: float
+    label: str = ""
+    action: str = "observe"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def angular_distance(self, angle: float) -> float:
+        """
+        Smallest signed angular distance from this peg to angle.
+        Positive means angle is clockwise/ahead of peg.
+        """
+        return ((angle - self.azimuth + 180) % 360) - 180
+
 class ThresholdFloor:
     """The Threshold Floor — where sun, moon, and alchemy intersect."""
     
@@ -474,6 +493,39 @@ class ThresholdFloor:
             max_length=getattr(self, "max_shadow_length", None),
         )
 
+    def shade_voice(self, timestamp: str | None = None) -> str:
+        """
+        Return a simple textual cue based on the current shadow's azimuth.
+
+        A shadow pointing roughly east/southeast (20°–170°) means there is
+        plenty of light left, so we return "Take your time."  A shadow
+        pointing southwest/west (190°–350°) means the day is far along, so
+        we return "It's later than you think."  If there is no shadow (sun
+        below the horizon) or it falls outside these ranges, we return
+        None to indicate an ambiguous period.
+
+        Args:
+            timestamp: Optional datetime or ISO‑8601 string to run the
+                       simulation at.  If omitted, the floor’s current
+                       time zone is used.
+
+        Returns:
+            A short phrase guiding next actions based on the shadow.
+        """
+        shadow = self.simulate_shadow(timestamp=timestamp)
+        if shadow is None:
+            return None
+
+        az = getattr(shadow, "shadow_azimuth_deg", None)
+        if az is None:
+            return None
+
+        az = float(az) % 360.0
+        if 20.0 <= az <= 160.0:
+            return "Take your time."
+        if 200.0 <= az <= 350.0:
+            return "It's later than you think."
+        return None
 
     def add_shadow_mark_from_simulation(
         self,

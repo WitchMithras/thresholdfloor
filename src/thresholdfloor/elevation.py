@@ -16,6 +16,274 @@ USE_LOCAL = os.getenv("SRTM_LOCAL", "0") == "1"
 
 tiles = []
 
+from statistics import mean, median
+
+
+def _offset_lat_lon(lat, lon, north_m=0.0, east_m=0.0):
+    """
+    Offset a lat/lon by local meter distances.
+
+    north_m: positive north, negative south
+    east_m: positive east, negative west
+    """
+    d_lat = north_m / 111320.0
+
+    cos_lat = math.cos(math.radians(lat))
+    if abs(cos_lat) < 1e-6:
+        cos_lat = 1e-6
+
+    d_lon = east_m / (111320.0 * cos_lat)
+    return lat + d_lat, lon + d_lon
+
+
+def _radial_offsets(radius_m, directions=8):
+    """
+    Return evenly spaced radial offsets.
+
+    Uses azimuth convention:
+    0° = north, 90° = east, 180° = south, 270° = west.
+    """
+    for i in range(directions):
+        az = (360.0 / directions) * i
+        north_m = radius_m * math.cos(math.radians(az))
+        east_m = radius_m * math.sin(math.radians(az))
+        yield az, north_m, east_m
+
+
+def _flatness_samples(lat, lon, radius_m, directions=8):
+    """
+    Sample the candidate crown/top area.
+
+    This tells us whether the proposed floor-pad is reasonably calm,
+    instead of a sharp spike.
+    """
+    values = []
+
+    center = topo(lat, lon)
+    if center is not None:
+        values.append(float(center))
+
+    for _az, north_m, east_m in _radial_offsets(radius_m, directions):
+        s_lat, s_lon = _offset_lat_lon(lat, lon, north_m, east_m)
+        elev = topo(s_lat, s_lon)
+        if elev is not None:
+            values.append(float(elev))
+
+    return values
+
+
+def tel_finder(
+    center_lat,
+    center_lon,
+    *,
+    block_radius_m=500,
+    grid_step_m=30,
+    floor_radius_m=20,
+    ring_radius_m=120,
+    directions=8,
+    min_prominence_m=5.0,
+    min_side_drop_m=1.0,
+    max_floor_relief_m=2.0,
+    require_all_sides=True,
+    keep=25,
+    cluster_radius_m=60,
+):
+    """
+    Sweep a block of coordinates for raised clear mounts.
+
+    A candidate is a possible threshold-floor site when:
+    - its center elevation is above the surrounding ring,
+    - the surrounding area drops away on all or most sides,
+    - the immediate crown/top is relatively flat,
+    - the site has enough prominence to matter.
+
+    Returns a ranked list of candidate dicts.
+
+    Parameters
+    ----------
+    center_lat, center_lon:
+        Center of the search block.
+
+    block_radius_m:
+        Radius of the square-ish sweep area around the center.
+
+    grid_step_m:
+        Spacing between sampled candidate points.
+
+    floor_radius_m:
+        Radius used to test whether the top/crown is floor-like.
+
+    ring_radius_m:
+        Radius used to test surrounding drop.
+
+    directions:
+        Number of radial directions sampled around each candidate.
+        8 gives cardinal + diagonal slope checks.
+
+    min_prominence_m:
+        Minimum height above surrounding median elevation.
+
+    min_side_drop_m:
+        Minimum drop required per side.
+
+    max_floor_relief_m:
+        Maximum relief allowed across the immediate floor pad.
+
+    require_all_sides:
+        If True, every sampled side must drop by at least min_side_drop_m.
+        If False, allows one side to fail.
+
+    keep:
+        Maximum number of candidates returned.
+
+    cluster_radius_m:
+        Prevents returning many nearby points from the same mound.
+    """
+
+    if ring_radius_m <= floor_radius_m:
+        raise ValueError("ring_radius_m must be larger than floor_radius_m")
+
+    if grid_step_m <= 0:
+        raise ValueError("grid_step_m must be positive")
+
+    raw_candidates = []
+    span = int(block_radius_m // grid_step_m)
+
+    for north_i in range(-span, span + 1):
+        for east_i in range(-span, span + 1):
+            north_m = north_i * grid_step_m
+            east_m = east_i * grid_step_m
+
+            # Keep the sweep roughly circular inside the block.
+            if math.hypot(north_m, east_m) > block_radius_m:
+                continue
+
+            lat, lon = _offset_lat_lon(center_lat, center_lon, north_m, east_m)
+            center_elev = topo(lat, lon)
+
+            if center_elev is None:
+                continue
+
+            center_elev = float(center_elev)
+
+            # Test the proposed floor pad first.
+            pad_elevs = _flatness_samples(
+                lat,
+                lon,
+                floor_radius_m,
+                directions=directions,
+            )
+
+            if len(pad_elevs) < max(3, directions // 2):
+                continue
+
+            floor_relief_m = max(pad_elevs) - min(pad_elevs)
+
+            if floor_relief_m > max_floor_relief_m:
+                continue
+
+            # Test the surrounding ring.
+            ring_elevs = []
+            side_drops = []
+            side_angles = []
+
+            for az, r_north_m, r_east_m in _radial_offsets(
+                ring_radius_m,
+                directions=directions,
+            ):
+                s_lat, s_lon = _offset_lat_lon(lat, lon, r_north_m, r_east_m)
+                ring_elev = topo(s_lat, s_lon)
+
+                if ring_elev is None:
+                    continue
+
+                ring_elev = float(ring_elev)
+                drop_m = center_elev - ring_elev
+
+                ring_elevs.append(ring_elev)
+                side_drops.append(drop_m)
+                side_angles.append({
+                    "azimuth": az,
+                    "drop_m": drop_m,
+                    "slope_deg": math.degrees(math.atan2(drop_m, ring_radius_m)),
+                })
+
+            if len(side_drops) < max(4, directions // 2):
+                continue
+
+            sides_that_drop = sum(1 for d in side_drops if d >= min_side_drop_m)
+
+            if require_all_sides:
+                if sides_that_drop < len(side_drops):
+                    continue
+            else:
+                # Allow one weak side, useful for saddles or elongated crowns.
+                if sides_that_drop < len(side_drops) - 1:
+                    continue
+
+            surrounding_median = median(ring_elevs)
+            surrounding_mean = mean(ring_elevs)
+
+            prominence_m = center_elev - surrounding_median
+            mean_drop_m = mean(side_drops)
+            min_drop_m = min(side_drops)
+            max_drop_m = max(side_drops)
+
+            if prominence_m < min_prominence_m:
+                continue
+
+            slope_coverage = sides_that_drop / len(side_drops)
+
+            # Score favors prominence, true all-side falloff, and calm floor top.
+            # The floor_relief penalty keeps sharp cones from winning too easily.
+            score = (
+                prominence_m * 1.00
+                + mean_drop_m * 0.45
+                + min_drop_m * 0.35
+                + slope_coverage * 10.0
+                - floor_relief_m * 2.0
+            )
+
+            raw_candidates.append({
+                "lat": lat,
+                "lon": lon,
+                "elevation_m": center_elev,
+                "surrounding_median_m": surrounding_median,
+                "surrounding_mean_m": surrounding_mean,
+                "prominence_m": prominence_m,
+                "mean_drop_m": mean_drop_m,
+                "min_drop_m": min_drop_m,
+                "max_drop_m": max_drop_m,
+                "floor_relief_m": floor_relief_m,
+                "slope_coverage": slope_coverage,
+                "side_angles": side_angles,
+                "score": score,
+                "search_offset_m": {
+                    "north": north_m,
+                    "east": east_m,
+                },
+            })
+
+    raw_candidates.sort(key=lambda c: c["score"], reverse=True)
+
+    # De-duplicate clusters so one mound does not return twenty nearly identical crowns.
+    chosen = []
+
+    def distance_m(a, b):
+        avg_lat = math.radians((a["lat"] + b["lat"]) / 2.0)
+        dn = (a["lat"] - b["lat"]) * 111320.0
+        de = (a["lon"] - b["lon"]) * 111320.0 * math.cos(avg_lat)
+        return math.hypot(dn, de)
+
+    for candidate in raw_candidates:
+        if all(distance_m(candidate, existing) >= cluster_radius_m for existing in chosen):
+            chosen.append(candidate)
+
+        if len(chosen) >= keep:
+            break
+
+    return chosen
+
 def build_tile_index(folder="srtm"):
 
     for path in Path(folder).glob("*.tif"):
