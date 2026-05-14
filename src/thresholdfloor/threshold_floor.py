@@ -515,9 +515,9 @@ class ThresholdFloor:
         shadow = self.simulate_shadow(timestamp=timestamp)
         if shadow is None:
             return "Si sol deficit, respicit me nemo." # If the sun is gone, nobody will look at me.
-
-        if prompt.lower() == "who are you?":
-            return "Umbra sumus." # I am shade
+        if prompt:
+            if prompt.lower() == "who are you?":
+                return "Umbra sumus." # I am shade
 
         az = getattr(shadow, "shadow_azimuth_deg", None)
         if az is None:
@@ -712,7 +712,7 @@ class ThresholdFloor:
             phase = 'Nigredo' if hemisphere == 'north' else 'Citrinitas'
         else:
             phase = 'Rubedo' if warm_side else 'Nigredo' if hemisphere == 'north' else 'Nigredo' if warm_side else 'Rubedo'
-        self.phase = phase
+        self.current_phase = phase
         return {
             'phase': phase,
             'heading': heading,
@@ -791,8 +791,7 @@ class ThresholdFloor:
         return datetime.now(tzinfo)
 
     def now_mt(self) -> datetime:
-        MoonTime.from_dt(self.now())
-        return MoonTime.from_dt(self.now())
+        return MoonTime.from_datetime(self.now())
 
     def weather(self) -> str:
         if not WEATHER_EXISTS:

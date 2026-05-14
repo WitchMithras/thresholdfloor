@@ -17,10 +17,62 @@ try:
 except Exception:
     pass
 try:
-    from PIL import Image, ImageOps, ImageChops, ImageOps, ImageFilter, ImageDraw, ImageFont, ImageTk, ImageEnhance
+    from PIL import Image, ImageOps, ImageChops, ImageOps, ImageFilter, ImageDraw, ImageFont, ImageTk, ImageEnhance, ImageColor
     PIL_EXISTS = True
 except Exception:
     pass
+
+DEFAULT_OUTER_RING_COLOR = (180, 150, 255, 180)
+PHASE_COLOR_RGBA = {
+    "black": (0, 0, 0, 90),
+    "white": (170, 170, 170, 170),
+    "yellow-gold": (170, 100, 40, 90),
+    "crimson-red": (190, 12, 20, 90),
+}
+
+
+def _coerce_ring_color(color, default=DEFAULT_OUTER_RING_COLOR):
+    if isinstance(color, str):
+        keyed = color.strip().lower().replace("_", "-").replace(" ", "-")
+        if keyed in PHASE_COLOR_RGBA:
+            return PHASE_COLOR_RGBA[keyed]
+
+        image_color = globals().get("ImageColor")
+        if image_color is not None:
+            try:
+                r, g, b = image_color.getrgb(color)
+                return (r, g, b, default[3])
+            except ValueError:
+                return default
+
+    if isinstance(color, (tuple, list)) and len(color) in (3, 4):
+        values = tuple(int(c) for c in color)
+        if len(values) == 3:
+            return (*values, default[3])
+        return values
+
+    return default
+
+
+def _phase_outer_ring_color(floor, default=DEFAULT_OUTER_RING_COLOR):
+    phase = getattr(floor, "current_phase", None)
+    if not phase and hasattr(floor, "get_phase"):
+        try:
+            phase = floor.get_phase()
+        except Exception:
+            phase = None
+
+    if not phase:
+        return default
+
+    COLORS = {
+        "Nigredo": "black",
+        "Albedo": "white",
+        "Citrinitas": "yellow-gold",
+        "Rubedo": "crimson-red",
+    }
+
+    return _coerce_ring_color(COLORS.get(phase), default)
 
 SIGNS = {
     '♈': 'Aries',
@@ -501,7 +553,7 @@ def _draw_motto_brackets(img, cx, cy, r):
     _draw_diamond(img, cx, cy, ornament_r, 52, scale=3)
 
     # Bracket ornaments around FESTINA LENTE
-    _draw_diamond(img, cx, cy, ornament_r, 305, scale=3)
+    _draw_diamond(img, cx, cy, ornament_r, 310, scale=3)
     _draw_diamond(img, cx, cy, ornament_r, 320, scale=3)
 
     # Small keel mark at bottom center
@@ -667,37 +719,110 @@ def _draw_sigil_inscribe(img, cx, cy, size, r):
         print(e)
         return img
 
-def _draw_vestal_ring(img, cx, cy, phase, r, color=(180, 150, 255, 180), width=3):
-    draw.ellipse(
-        (cx - r, cy - r, cx + r, cy + r),
-        outline=color,
-        width=width
+def _draw_vestal_ring(
+    img,
+    cx,
+    cy,
+    phase,
+    waxing=True,
+    r=100,
+    color=(180, 150, 255, 180),
+    width=3,
+):
+    """
+    Draw a lunar phase ring.
+
+    phase:
+        0.0 = new moon
+        1.0 = full moon
+
+    waxing:
+        True  = right-side illumination
+        False = left-side illumination
+    """
+
+    draw = ImageDraw.Draw(img)
+
+    # Convert phase into angular sweep.
+    sweep = max(0.0, min(1.0, phase)) * 180.0
+
+    if waxing:
+        # Right side grows upward/downward from south.
+        start = 0 - sweep
+        end   = 0 + sweep
+
+    else:
+        # Left side.
+        start = 180 - sweep
+        end   = 180 + sweep
+
+    bbox = (
+        cx - r,
+        cy - r,
+        cx + r,
+        cy + r,
     )
+
+    draw.arc(
+        bbox,
+        start=start,
+        end=end,
+        fill=color,
+        width=width,
+    )
+
+    return img
 
 def _render_clock_sigil_frame(floor, observed_at, size=512, ornaments=True, inscription=True, glyph=True, tree=True, shadow=True, vestal=False):
     try:
         img = _draw_sigil_background(size)
         cx, cy = size // 2, size // 2
         tree_size = max(1, int(size * (82 / 400)))
-        _draw_sigil_tree_axis(img, cx, cy, size=tree_size)
         font = _load_sigil_font(max(1, int(size * (36 / 400))))
         r = int((size // 2) * 0.75)
-        if ornaments:
-            _draw_sigil_ornaments(img, cx, cy, size, r)
+
         alt, az = _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at)
         if shadow:
             _draw_sigil_shadow(img, cx, cy, alt, az, size=tree_size)
+        if tree:
+            _draw_sigil_tree_axis(img, cx, cy, size=tree_size)
+
+        if ornaments:
+            _draw_sigil_ornaments(img, cx, cy, size, r)
         if inscription:
             _draw_sigil_inscribe(img, cx, cy, size=size, r=r)
         if vestal:
             mt = floor.now_mt()
-            moon_phase_fraction = mt.moon_illum / 100
-            def _draw_vestal_ring(
+            def infer_waxing() -> bool | None:
+                phase = getattr(mt, "moon_phase", None) or ""
+                p = str(phase).lower()
+                if p.startswith("wax"):
+                    return True
+                if p.startswith("wan"):
+                    return False
+                if "first quarter" in p:
+                    return True
+                if "last quarter" in p:
+                    return False
+                return None
+
+            waxing = infer_waxing()
+            illum_raw = mt.moon_illum / 100
+
+            if illum_raw > 100:
+                illum = illum_raw / 1000.0
+            else:
+                illum = illum_raw / 100.0
+            moon_phase_fraction = max(0.0, min(1.0, float(illum)))
+
+            _draw_vestal_ring(
                 img,
                 cx,
                 cy,
-                radius=r * 1.08,
+                r=r * 1.15,
+                color=_phase_outer_ring_color(floor),
                 phase=moon_phase_fraction,
+                waxing=waxing
             )
 
         return img
@@ -974,7 +1099,7 @@ def animate_sigil(canvas, base_image_path, duration=4, floor=None, frame_count=2
 
         for i in range(frame_count):
             observed_at = start + (tick * i)
-            frame = _render_clock_sigil_frame(floor, observed_at, size=512)
+            frame = _render_clock_sigil_frame(floor, observed_at, size=512, ornaments=True, inscription=True, glyph=True, tree=True, shadow=True, vestal=True)
             #frames.append(frame.copy())
 
             frames.append(glow_layer(frame.copy(), passes=1))
