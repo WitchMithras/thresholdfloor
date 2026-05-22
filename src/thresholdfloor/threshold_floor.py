@@ -517,7 +517,7 @@ class ThresholdFloor:
         """
         shadow = self.simulate_shadow(timestamp=timestamp)
         if shadow is None:
-            return "Si sol deficit, respicit me nemo." # If the sun is gone, nobody will look at me.
+            return ""
         if prompt:
             if prompt.lower() == "who are you?":
                 return "Umbra sumus." # I am shade
@@ -701,7 +701,7 @@ class ThresholdFloor:
         row = self
         tz = row.tz or os.getenv('TZ') or 'UTC'
         lat, _lon = row.latitude, row.longitude
-        hemisphere = 'north' if _lon >= 0.001 else 'south'
+        hemisphere = 'north' if lat >= 0.001 else 'south'
         east_arch = getattr(self, "arch_bearing_deg", 90.0)
         # Seed yesterday's azimuth and direction if missing
         today = _date_cls.today()
