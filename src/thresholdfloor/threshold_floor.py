@@ -381,6 +381,9 @@ class ThresholdFloor:
         self.visual_state = "idle"
         self.mode = "threshing"
         self.current_phase = None
+        self._direction = None
+        self._warm_side = None
+        self._position_label = None
         self.water_level = 0.0
         self.blood_level = 0.0
         self.wine_level = 0.0
@@ -631,6 +634,51 @@ class ThresholdFloor:
     def get_phase(self):
         return self.alchemy_phase()["phase"]
 
+    @property
+    def direction(self):
+        if getattr(self, "_direction", None) is None:
+            self.alchemy_phase()
+
+        return self._direction
+
+    @property
+    def hemisphere(self):
+        if getattr(self, "_hemisphere", None) is None:
+            self.alchemy_phase()
+
+        return self._hemisphere
+
+    @property
+    def warm_side(self):
+        if getattr(self, "_warm_side", None) is None:
+            self.alchemy_phase()
+
+        return self._warm_side
+
+    @property
+    def position_label(self):
+        if getattr(self, "_position_label", None) is None:
+            self.alchemy_phase()
+
+        return self._position_label
+
+    def get_job(self):
+        if self.current_phase is None:
+            self.alchemy_phase()
+
+        return FIELD_JOBS.get(self.current_phase)
+
+    def get_migration_state(self):
+        if self.current_phase is None:
+            self.alchemy_phase()
+
+        return {
+            "direction": self.direction,
+            "phase": self.current_phase,
+            "warm_side": self.warm_side,
+            "position": self.position_label,
+        }
+
     def alchemy_phase(self) -> Dict[str, Any]:
         """Discern alchemical phase from prior-day sunrise movement and position.
 
@@ -713,6 +761,13 @@ class ThresholdFloor:
         else:
             phase = 'Rubedo' if warm_side else 'Nigredo' if hemisphere == 'north' else 'Nigredo' if warm_side else 'Rubedo'
         self.current_phase = phase
+        if heading == hemisphere:
+            self._direction = 'ascending'
+        else:
+            self._direction = 'descending'
+        self._hemisphere = hemisphere
+        self._warm_side = warm_side
+        self._position_label = position_label
         return {
             'phase': phase,
             'heading': heading,
@@ -721,6 +776,7 @@ class ThresholdFloor:
             'azimuth': azf,
             'east_arch': east_arch,
         }
+
 
     def sun_delay(self) -> Dict[str, Any]:
         angle = scan_vector(self.latitude, self.longitude, self.get_sunrise())
