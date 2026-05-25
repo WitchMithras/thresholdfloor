@@ -70,10 +70,10 @@ NORTH_ARCH = {"azimuth": 0.0}
 # Alchemy constants
 ALCHEMY_PHASES = ["Nigredo", "Albedo", "Citrinitas", "Rubedo"]
 FIELD_JOBS = {
-    "Nigredo": "return, rest, let decay, settle",
-    "Albedo": "plow, sow, cleanse, sweep, purify water channels",
-    "Citrinitas": "tend, build, illuminate, water",
-    "Rubedo": "harvest, prepare feast, store",
+    "Nigredo": "let decay, return, rest, feast",
+    "Albedo": "sweep, plow, cleanse, sow",
+    "Citrinitas": "tend, build, water, protect",
+    "Rubedo": "harvest, store, feast",
 }
 COLORS = {
     "Nigredo": "black",
