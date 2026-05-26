@@ -461,6 +461,7 @@ class ThresholdFloor:
     def simulate_shadow(
         self,
         timestamp: str | None = None,
+        body: str | None = "sun"
     ):
         """
         Simulate one shadow from the floor's current gnomon.
@@ -468,8 +469,8 @@ class ThresholdFloor:
         if timestamp is None:
             timestamp = self.now()
 
-        beam = self.observe(timestamp)
-        sun = beam.get("sun") if beam else None
+        beam = self.observe(timestamp, body=body)
+        sun = beam.get(body) if beam else None
 
         if not sun:
             return None
@@ -822,13 +823,13 @@ class ThresholdFloor:
             return "mushroom_trigger"
         return "late"
 
-    def observe(self, dt: Optional[datetime] = None) -> Dict[str, Any]:
+    def observe(self, dt: Optional[datetime] = None, body: str = "sun") -> Dict[str, Any]:
         if dt is None:
             dt = self.now()
-        obs = _solar_horizontal_at(dt, self.latitude, self.longitude)
+        obs = _solar_horizontal_at(dt, self.latitude, self.longitude, body=body)
         return {
             "time": dt,
-            "sun": obs,
+            f"{body}": obs,
             "location": {
                 "lat": self.latitude,
                 "lon": self.longitude,

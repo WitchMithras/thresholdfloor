@@ -220,10 +220,10 @@ def bennett_refraction(alt_deg, pressure=1013.25, temperature=10.0):
 
     return R  # arcminutes
 
-def solar_horizontal_at(dt, lat, lon, af=None):
+def solar_horizontal_at(dt, lat, lon, af=None, body="sun"):
     if not af:
         af = AetherField.load_calibration('AetherField')
-    lon_ecl = af.longitude(dt=dt, body="sun")
+    lon_ecl = af.longitude(dt=dt, body=body)
     eps = obliquity_deg(dt)
 
     ra, dec = ecliptic_to_equatorial(lon_ecl, 0.0, eps)
