@@ -8,6 +8,7 @@ from pathlib import Path
 import os
 import requests
 from functools import lru_cache
+import math
 
 SRTM_URL = "https://pythoness.duckdns.org/v1/thresh/srtm"
 
@@ -18,6 +19,68 @@ tiles = []
 
 from statistics import mean, median
 
+METERS_PER_DEG_LAT = 111_320
+
+def offset_lat_lon(lat, lon, dx_m, dy_m):
+    """
+    dx_m = east/west meters
+    dy_m = north/south meters
+    """
+    new_lat = lat + dy_m / METERS_PER_DEG_LAT
+    new_lon = lon + dx_m / (METERS_PER_DEG_LAT * math.cos(math.radians(lat)))
+    return new_lat, new_lon
+
+
+def coord_to_panel(lat, lon, resolution=200):
+    scaled_lon = lon * 1000
+    scaled_lat = lat * 1000
+
+    panel_x = math.floor(scaled_lon)
+    panel_y = math.floor(scaled_lat)
+
+    local_x = scaled_lon - panel_x
+    local_y = scaled_lat - panel_y
+
+    px = int(local_x * resolution)
+    py = int(local_y * resolution)
+
+    return panel_x, panel_y, px, py
+
+def scan_panel(panel_x, panel_y, resolution=200):
+    """
+    panel_x/panel_y are whole-number panel coordinates.
+    resolution is samples per side.
+    topo(lat, lon) should return elevation meters.
+    """
+    samples = []
+
+    for py in range(resolution):
+        row = []
+        for px in range(resolution):
+            # normalized position inside panel: 0.0 to almost 1.0
+            local_x = px / resolution
+            local_y = py / resolution
+
+            lon = (panel_x + local_x) / 1000
+            lat = (panel_y + local_y) / 1000
+
+            elev = topo(lat, lon)
+
+            row.append({
+                "px": px,
+                "py": py,
+                "lat": lat,
+                "lon": lon,
+                "elev": elev,
+            })
+
+        samples.append(row)
+
+    return {
+        "panel": (panel_x, panel_y),
+        "resolution": resolution,
+        "samples": samples,
+    }
 
 def _offset_lat_lon(lat, lon, north_m=0.0, east_m=0.0):
     """

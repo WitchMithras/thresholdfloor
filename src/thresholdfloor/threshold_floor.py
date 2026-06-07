@@ -359,7 +359,7 @@ class ThresholdFloor:
         elevation_m: float = 0.0,
         gate_coords: Optional[Tuple[float, float, float]] = None,
         tree_coords: Optional[Tuple[float, float, float]] = None,
-        calibration: str = "AetherField"
+        calibration: str = "rawr.json"
     ):
         self.name = name
         self.latitude = latitude
