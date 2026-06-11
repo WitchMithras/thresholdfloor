@@ -225,6 +225,34 @@ def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
     sprite = sprite.resize((size, size), Image.LANCZOS)
     angle = 180
     diff = 0
+    if 60 < azimuth < 120 or 240 < azimuth < 300:
+
+        # 🌞 "Twilight" enlongation
+        alt = max(altitude, 2)
+        alt_rad = math.radians(alt)
+
+        # angle difference from the "broadside" shadow direction (180° in your case)
+        delta = abs((azimuth - 180 + 180) % 360 - 180)
+
+        # cosine falloff (0° = full width, 90° = very thin)
+        falloff = abs(math.cos(math.radians(delta)))
+
+        # soften it so it doesn’t collapse too fast
+        falloff = falloff ** 1.5   # tweak 1.2–2.5
+
+        # clamp to your minimum thickness
+        min_scale = 0.09
+        scale = min_scale + (1 - min_scale) * falloff
+
+        new_w = int(size * scale)
+            # 🌿 Stretch length based on altitude (LOW sun = LONG shadow)
+        stretch = min(6.0, 1 / math.tan(alt_rad))
+
+        inc = size * stretch
+        new_h = int(size + inc)  # flatten vertically
+        sprite_offset = -90
+        sprite = sprite.resize((new_w, new_h), Image.LANCZOS)
+
 
     if 90 <= azimuth < 270 :
         # 🌑 Darken
@@ -243,31 +271,6 @@ def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
         # 🌫 Optional blur
         sprite = sprite.filter(ImageFilter.GaussianBlur(1.1))
 
-        # 🌞 Clamp altitude
-        alt = max(altitude, 2)
-        alt_rad = math.radians(alt)
-
-        # angle difference from the "broadside" shadow direction (180° in your case)
-        delta = abs((azimuth - 180 + 180) % 360 - 180)
-
-        # cosine falloff (0° = full width, 90° = very thin)
-        falloff = abs(math.cos(math.radians(delta)))
-
-        # soften it so it doesn’t collapse too fast
-        falloff = falloff ** 1.5   # tweak 1.2–2.5
-
-        # clamp to your minimum thickness
-        min_scale = 0.09
-        scale = min_scale + (1 - min_scale) * falloff
-
-        new_w = int(size * scale)
-          # 🌿 Stretch length based on altitude (LOW sun = LONG shadow)
-        stretch = min(6.0, 1 / math.tan(alt_rad))
-
-        inc = size * stretch
-        new_h = int(size + inc)  # flatten vertically
-        sprite_offset = -90
-        sprite = sprite.resize((new_w, new_h), Image.LANCZOS)
 
     # 🧭 Rotate so it lays away from sun
     #if altitude > 0:
