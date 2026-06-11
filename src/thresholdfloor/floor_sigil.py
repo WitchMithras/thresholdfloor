@@ -289,42 +289,50 @@ def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
             diff = (360 - azimuth)
             angle = (180 + diff)
         #angle = azimuth % 360
+    try:
+        # Rooted anchor prototype
+        new_w, new_h = sprite.size
 
-    sprite = sprite.rotate(angle, resample=Image.BICUBIC, expand=True)
+        root_x = new_w / 2
+        root_y = new_h
+        rotated, ax, ay = _rotate_about_anchor(sprite, angle, root_x, root_y)
+        base_img.alpha_composite(rotated, (int(cx - ax), int(cy - ay)))
+    except Exception:
+        # 🎯 Anchor correction (THIS is the magic)
+        sprite = sprite.rotate(angle, resample=Image.BICUBIC, expand=True)
 
-    # 🎯 Anchor correction (THIS is the magic)
-    w, h = sprite.size
+        w, h = sprite.size
 
-    # We want the "base" of the tree to stay at (cx, cy)
-    # After rotation, base ≈ center-bottom of the image
-    if 180 <= azimuth <= 270 :
+        # We want the "base" of the tree to stay at (cx, cy)
+        # After rotation, base ≈ center-bottom of the image
+        if 180 <= azimuth <= 270 :
 
-        x = cx - w * min(1, diff // 20)
+            x = cx - w * min(1, diff // 20)
 
-        #y = cy
+            #y = cy
 
-    elif 90 <= azimuth < 180 :
-        x = cx
+        elif 90 <= azimuth < 180 :
+            x = cx
 
-        #y = cy - w
-    #x = cx
+            #y = cy - w
+        #x = cx
 
-    elif 270 < azimuth <= 360:
-        x = cx
-
-
-        #y = cy
-
-    else:
-        x = cx - w * min(1, diff // 20)
-
-        #y = cy - w
-    #x = cx
-
-    y = cy
+        elif 270 < azimuth <= 360:
+            x = cx
 
 
-    base_img.paste(sprite, (int(x), int(y)), sprite)
+            #y = cy
+
+        else:
+            x = cx - w * min(1, diff // 20)
+
+            #y = cy - w
+        #x = cx
+
+        y = cy
+
+
+        base_img.paste(sprite, (int(x), int(y)), sprite)
     return base_img
 
 def overlay_tree_sprite(base_img, rune, position=None, size=48):
@@ -453,8 +461,9 @@ def _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at):
         sign = floor.af.sign(observed_at, "sun")
         lon = az
         signs = rotated_zodiac(sign)
-
+        #lon += 30 % 360
         for sign in signs:
+
             theta = math.radians(lon)
 
             x = cx + r * -math.sin(theta)
@@ -503,7 +512,7 @@ def _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at):
             py = oy - gh2 / 2
 
             img.paste(glyph_img, (int(px), int(py)), glyph_img)
-            lon += 30
+            lon += 30 % 360
 
         return alt, az
     except Exception as e:

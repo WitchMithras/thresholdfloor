@@ -5,42 +5,6 @@ from thresholdfloor import ThresholdFloor as tf
 floor = tf("meow meow london", 54.00, 2.00, "Europe/London")
 sigil = floor.sigil() # Generate and display current sigil
 
-floor = tf("meow meow london", 45.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
-floor = tf("meow meow london", 36.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
-floor = tf("meow meow london", 27.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
-floor = tf("meow meow london", 18.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
-floor = tf("meow meow london", 9.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
-floor = tf("meow meow london", 0.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
-floor = tf("meow meow london", -9.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
-floor = tf("meow meow london", -18.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
-floor = tf("meow meow london", -27.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
-floor = tf("meow meow london", -36.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
-floor = tf("meow meow london", -45.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
-floor = tf("meow meow london", -54.00, 2.00, "Europe/London")
-sigil = floor.sigil() # Generate and display current sigil
-
 floor = tf("sleep", latitude=31.871, longitude=8.443, tz="Asia/Jerusalem")
 sigil = floor.sigil() # Generate and display current sigil
 

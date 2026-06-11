@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thresholdfloor"
-version = "0.3.5"
+version = "0.3.6"
 description = "A floor below for tuning to what's above"
 requires-python = ">=3.11"
 dependencies = [
-  "aetherfield>=0.5.1",
+  "aetherfield>=0.6.6",
   "moontime>=0.4.9",
   "rasterio>=1.4.4",
   "python-dateutil>=2.8.0",
