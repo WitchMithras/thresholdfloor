@@ -203,6 +203,7 @@ sprite_lookup = {
 }
 
 def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
+    print(azimuth, altitude)
     import math
     #cx, cy = cx + size, cy + size
     sprite_key = sprite_lookup.get(rune)
@@ -222,59 +223,69 @@ def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
 
     # Resize
     sprite = sprite.resize((size, size), Image.LANCZOS)
+    angle = 180
+    diff = 0
 
-    # 🌑 Darken
-        # 1. Convert RGB to grayscale
-    r, g, b, a = sprite.split()
+    if 90 <= azimuth < 270 :
+        # 🌑 Darken
+            # 1. Convert RGB to grayscale
+        r, g, b, a = sprite.split()
 
-    #rgb = Image.merge("RGB", (r, g, b))
+        #rgb = Image.merge("RGB", (r, g, b))
 
-    #gray = ImageOps.grayscale(rgb)
+        #gray = ImageOps.grayscale(rgb)
 
-        # 2. Apply ash tint (charcoal hues)
-    #tinted = ImageOps.colorize(gray, black=(30, 30, 30), white=(80, 80, 80)).convert("RGBA")
+            # 2. Apply ash tint (charcoal hues)
+        #tinted = ImageOps.colorize(gray, black=(30, 30, 30), white=(80, 80, 80)).convert("RGBA")
 
+        sprite = ImageEnhance.Brightness(sprite).enhance(0.1)
 
-    sprite = ImageEnhance.Brightness(sprite).enhance(0.1)
+        # 🌫 Optional blur
+        sprite = sprite.filter(ImageFilter.GaussianBlur(1.1))
 
-    # 🌫 Optional blur
-    sprite = sprite.filter(ImageFilter.GaussianBlur(1.1))
+        # 🌞 Clamp altitude
+        alt = max(altitude, 2)
+        alt_rad = math.radians(alt)
 
-    # 🌞 Clamp altitude
-    alt = max(altitude, 2)
-    alt_rad = math.radians(alt)
+        # angle difference from the "broadside" shadow direction (180° in your case)
+        delta = abs((azimuth - 180 + 180) % 360 - 180)
 
-    # angle difference from the "broadside" shadow direction (180° in your case)
-    delta = abs((azimuth - 180 + 180) % 360 - 180)
+        # cosine falloff (0° = full width, 90° = very thin)
+        falloff = abs(math.cos(math.radians(delta)))
 
-    # cosine falloff (0° = full width, 90° = very thin)
-    falloff = abs(math.cos(math.radians(delta)))
+        # soften it so it doesn’t collapse too fast
+        falloff = falloff ** 1.5   # tweak 1.2–2.5
 
-    # soften it so it doesn’t collapse too fast
-    falloff = falloff ** 1.5   # tweak 1.2–2.5
+        # clamp to your minimum thickness
+        min_scale = 0.09
+        scale = min_scale + (1 - min_scale) * falloff
 
-    # clamp to your minimum thickness
-    min_scale = 0.09
-    scale = min_scale + (1 - min_scale) * falloff
+        new_w = int(size * scale)
+          # 🌿 Stretch length based on altitude (LOW sun = LONG shadow)
+        stretch = min(6.0, 1 / math.tan(alt_rad))
 
-    new_w = int(size * scale)
-      # 🌿 Stretch length based on altitude (LOW sun = LONG shadow)
-    stretch = min(6.0, 1 / math.tan(alt_rad))
-
-    inc = size * stretch
-    new_h = int(size + inc)  # flatten vertically
-    sprite_offset = -90
-    sprite = sprite.resize((new_w, new_h), Image.LANCZOS)
+        inc = size * stretch
+        new_h = int(size + inc)  # flatten vertically
+        sprite_offset = -90
+        sprite = sprite.resize((new_w, new_h), Image.LANCZOS)
 
     # 🧭 Rotate so it lays away from sun
-    angle = (azimuth - 90) % 360
-    diff = 0
-    if azimuth > 180: 
-        diff = (azimuth - 180)
-        angle = (180 - diff)
-    elif azimuth < 180: 
-        diff = (180 - azimuth)
-        angle = (180 + diff)
+    #if altitude > 0:
+        if azimuth > 180: 
+            diff = (azimuth - 180)
+            angle = (180 - diff)
+        elif azimuth < 180: 
+            diff = (180 - azimuth)
+            angle = (180 + diff)
+
+    else:
+        if 0 < azimuth < 90: 
+            diff = (azimuth)
+            angle = (180 - diff)
+        elif 270 < azimuth < 360: 
+            diff = (360 - azimuth)
+            angle = (180 + diff)
+        #angle = azimuth % 360
 
     sprite = sprite.rotate(angle, resample=Image.BICUBIC, expand=True)
 
@@ -283,14 +294,26 @@ def overlay_shadow_tree(base_img, rune, cx, cy, azimuth, altitude, size=64):
 
     # We want the "base" of the tree to stay at (cx, cy)
     # After rotation, base ≈ center-bottom of the image
-    if azimuth >= 180:
+    if 180 <= azimuth <= 270 :
 
         x = cx - w * min(1, diff // 20)
 
         #y = cy
 
-    else:
+    elif 90 <= azimuth < 180 :
         x = cx
+
+        #y = cy - w
+    #x = cx
+
+    elif 270 < azimuth <= 360:
+        x = cx
+
+
+        #y = cy
+
+    else:
+        x = cx - w * min(1, diff // 20)
 
         #y = cy - w
     #x = cx
@@ -486,16 +509,16 @@ def _draw_sigil_glyphs(img, floor, font, cx, cy, r, observed_at):
 
 
 def _draw_sigil_shadow(img, cx, cy, alt, az, size=82):
-    if alt is not None and az is not None and alt > 0 and 90 < az < 270:
-        overlay_shadow_tree(
-            img,
-            rune="\u16c7",
-            cx=cx,
-            cy=cy,
-            azimuth=az,
-            altitude=alt,
-            size=size
-        )
+    #if alt is not None and az is not None and alt > 0 and 90 < az < 270:
+    overlay_shadow_tree(
+        img,
+        rune="\u16c7",
+        cx=cx,
+        cy=cy,
+        azimuth=az,
+        altitude=alt,
+        size=size
+    )
     return img
 
 def _polar(cx, cy, radius, angle_deg):
@@ -840,6 +863,26 @@ def _clock_frame_duration_seconds(start, frame_count, moontime_hours):
 
     return (24 * 60 * 60) / frame_count
 
+def _rotate_about_anchor(sprite, angle, anchor_x, anchor_y):
+    pad = int(max(sprite.size) * 3)
+    canvas = Image.new("RGBA", (pad, pad), (0, 0, 0, 0))
+
+    cx = pad // 2
+    cy = pad // 2
+
+    canvas.alpha_composite(
+        sprite,
+        (int(cx - anchor_x), int(cy - anchor_y))
+    )
+
+    rotated = canvas.rotate(
+        angle,
+        resample=Image.BICUBIC,
+        center=(cx, cy),
+        expand=False
+    )
+
+    return rotated, cx, cy
 
 def tf_sigil(floor, size=400):
     if not PIL_EXISTS:
@@ -1085,7 +1128,7 @@ def sigil_corruptor(img, passes=3, intensity=2):
 
     return img
 
-def animate_sigil(canvas, base_image_path, duration=4, floor=None, frame_count=24, moontime_hours=24):
+def animate_sigil(canvas, base_image_path, duration=4, floor=None, frame_count=1, moontime_hours=24):
     """Animate a sigil on the given canvas and save the frames as a GIF."""
     if not TK_EXISTS:
         return None
